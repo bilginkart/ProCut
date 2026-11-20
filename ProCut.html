@@ -1,0 +1,2297 @@
+<!DOCTYPE html>
+<html lang="tr" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Gelişmiş Arka Plan Silici Stüdyosu</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0f172a;
+            color: #f8fafc;
+            overflow: hidden;
+            user-select: none;
+            -webkit-user-select: none;
+            overscroll-behavior: none;
+        }
+
+        /* Dokunmatik Ekranlarda Kaydırmayı Engelle */
+        #canvasViewport {
+            touch-action: none;
+        }
+
+        /* Ultra Zoom İçin Keskin Piksel Görünümü */
+        .pixelated-canvas {
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+
+        /* Şeffaf Arka Plan Damalı Deseni */
+        .checkerboard {
+            background-color: #ffffff;
+            background-image: 
+                linear-gradient(45deg, #cbd5e1 25%, transparent 25%), 
+                linear-gradient(-45deg, #cbd5e1 25%, transparent 25%), 
+                linear-gradient(45deg, transparent 75%, #cbd5e1 75%), 
+                linear-gradient(-45deg, transparent 75%, #cbd5e1 75%);
+            background-size: 20px 20px;
+            background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+        }
+
+        .bg-dark-preview {
+            background-color: #090d16;
+            background-image: radial-gradient(#1e293b 1px, transparent 1px);
+            background-size: 16px 16px;
+        }
+
+        .bg-green-preview {
+            background-color: #10b981;
+        }
+
+        .bg-gray-preview {
+            background-color: #64748b;
+        }
+
+        .bg-white-preview {
+            background-color: #ffffff;
+        }
+
+        /* Özel Kaydırıcı (Slider) Tasarımı - Tablet & Mobil Dostu Geniş Dokunma Alanı */
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+            padding: 6px 0;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 20px;
+            width: 20px;
+            border-radius: 50%;
+            background: #38bdf8;
+            cursor: pointer;
+            margin-top: -7px;
+            box-shadow: 0 0 10px rgba(56, 189, 248, 0.7);
+            transition: transform 0.1s;
+        }
+        input[type=range]::-webkit-slider-thumb:hover,
+        input[type=range]::-webkit-slider-thumb:active {
+            transform: scale(1.25);
+            background: #7dd3fc;
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 6px;
+            cursor: pointer;
+            background: #334155;
+            border-radius: 3px;
+        }
+
+        /* Özel Kaydırma Çubuğu */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #475569;
+        }
+
+        .tool-active {
+            background: linear-gradient(135deg, #0284c7 0%, #2563eb 100%);
+            color: white;
+            border-color: #38bdf8;
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col">
+
+    <!-- Üst Menü (Header) -->
+    <header class="h-14 bg-slate-900 border-b border-slate-800 px-2 sm:px-4 flex items-center justify-between shrink-0 z-30 gap-1">
+        <div class="flex items-center space-x-2">
+            <!-- Mobil/Tablet Sol Panel Açma Butonu -->
+            <button id="btnToggleLeft" class="lg:hidden w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 text-sky-400 border border-slate-700 flex items-center justify-center transition" title="Araçlar & Resim Listesi">
+                <i class="fa-solid fa-toolbox"></i>
+            </button>
+            <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-sky-400 to-blue-600 hidden sm:flex items-center justify-center shadow-lg shadow-blue-500/20">
+                <i class="fa-solid fa-wand-magic-sparkles text-white text-lg"></i>
+            </div>
+            <div class="hidden md:block">
+                <h1 class="font-bold text-sm tracking-tight text-white flex items-center gap-1.5">
+                    ProCut <span class="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-sky-500/10 text-sky-400 border border-sky-500/20">Touch</span>
+                </h1>
+                <p class="text-[10px] text-slate-400">Hassas Kontür & Arka Plan Silici</p>
+            </div>
+        </div>
+
+        <!-- Orta Kontroller: Geri Al / İleri Al / Ultra Yakınlaştırma & Mercek -->
+        <div class="flex items-center bg-slate-800/90 rounded-xl p-1 border border-slate-700/60 space-x-0.5 sm:space-x-1 overflow-x-auto max-w-full">
+            <button id="btnUndo" title="Geri Al (Ctrl+Z)" class="p-2 sm:px-2.5 sm:py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-700 disabled:opacity-30 disabled:pointer-events-none transition text-xs flex items-center">
+                <i class="fa-solid fa-rotate-left"></i>
+            </button>
+            <button id="btnRedo" title="İleri Al (Ctrl+Y)" class="p-2 sm:px-2.5 sm:py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-700 disabled:opacity-30 disabled:pointer-events-none transition text-xs flex items-center">
+                <i class="fa-solid fa-rotate-right"></i>
+            </button>
+            <div class="h-4 w-[1px] bg-slate-700 mx-0.5"></div>
+            <button id="btnZoomOut" title="Uzaklaştır" class="p-2 sm:px-2 sm:py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-700 transition text-xs">
+                <i class="fa-solid fa-magnifying-glass-minus"></i>
+            </button>
+            <!-- Hızlı Yakınlaştırma Seçici (%25 - %3200) -->
+            <select id="zoomPresetSelect" title="Yakınlaştırma Oranı Seç" class="bg-slate-900 text-sky-400 font-mono text-xs rounded-lg px-1.5 py-1 border border-slate-700 focus:outline-none cursor-pointer">
+                <option value="fit">Sığdır</option>
+                <option value="0.5">50%</option>
+                <option value="1" selected>100%</option>
+                <option value="2">200%</option>
+                <option value="4">400%</option>
+                <option value="8">800%</option>
+                <option value="16">1600%</option>
+                <option value="32">3200%</option>
+            </select>
+            <button id="btnZoomIn" title="Yakınlaştır" class="p-2 sm:px-2 sm:py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-700 transition text-xs">
+                <i class="fa-solid fa-magnifying-glass-plus"></i>
+            </button>
+            <div class="h-4 w-[1px] bg-slate-700 mx-0.5"></div>
+            <!-- Hassas Büyüteç (Mercek) Butonu -->
+            <button id="btnToggleLoupe" title="Hassas Mercek (Büyüteç) Aç/Kapat" class="px-2.5 py-1.5 rounded-lg bg-sky-500/20 text-sky-300 border border-sky-500/40 hover:bg-sky-500/30 transition text-xs flex items-center gap-1 font-medium">
+                <i class="fa-solid fa-magnifying-glass-location"></i>
+                <span class="hidden sm:inline">Mercek</span>
+            </button>
+            <button id="btnCompare" title="Orijinali Görmek İçin Basılı Tutun" class="p-2 sm:px-2.5 sm:py-1.5 rounded-lg text-amber-400 hover:bg-slate-700 transition text-xs flex items-center gap-1 font-medium">
+                <i class="fa-solid fa-eye"></i> <span class="hidden xl:inline">Kıyasla</span>
+            </button>
+        </div>
+
+        <!-- Sağ Kontroller: Yükle & İndir & Sağ Panel Butonu -->
+        <div class="flex items-center space-x-1.5">
+            <label for="fileInput" class="cursor-pointer p-2 sm:px-3 sm:py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-medium transition flex items-center gap-1.5" title="Resim Ekle">
+                <i class="fa-solid fa-cloud-arrow-up text-sky-400"></i>
+                <span class="hidden md:inline">Ekle</span>
+            </label>
+            <input type="file" id="fileInput" multiple accept="image/*" class="hidden">
+
+            <button id="btnDownloadCurrent" class="p-2 sm:px-3 sm:py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-medium transition flex items-center gap-1.5 shadow-lg shadow-sky-600/20" title="Aktif Resmi PNG İndir">
+                <i class="fa-solid fa-download"></i>
+                <span class="hidden md:inline">PNG</span>
+            </button>
+
+            <button id="btnDownloadAll" class="p-2 sm:px-3 sm:py-1.5 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-medium transition flex items-center gap-1 shadow-lg shadow-emerald-600/20" title="Tümünü ZIP İndir">
+                <i class="fa-solid fa-file-zipper"></i>
+                <span class="hidden sm:inline">ZIP</span>
+                <span class="text-[10px] bg-black/20 px-1.5 py-0.5 rounded-full font-mono" id="batchCountBadge">0</span>
+            </button>
+
+            <!-- Mobil/Tablet Sağ Panel (Kenar Ayarları) Açma Butonu -->
+            <button id="btnToggleRight" class="lg:hidden w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 flex items-center justify-center transition" title="Kenar & Tolerans Ayarları">
+                <i class="fa-solid fa-sliders"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Ana Çalışma Alanı -->
+    <div class="flex-1 flex overflow-hidden relative">
+
+        <!-- Mobil/Tablet Açılır Panel Karartma Arka Planı -->
+        <div id="mobileBackdrop" class="fixed inset-0 bg-black/60 backdrop-blur-xs z-20 hidden lg:hidden"></div>
+
+        <!-- Sol Panel: Resim Kuyruğu (Batch) & Araçlar -->
+        <aside id="leftSidebar" class="fixed lg:static inset-y-0 left-0 w-72 sm:w-64 bg-slate-900 border-r border-slate-800 flex flex-col shrink-0 z-30 transform -translate-x-full lg:translate-x-0 transition-transform duration-300 ease-in-out pt-14 lg:pt-0">
+            
+            <!-- Araç Seçimi (Manuel Müdahale) -->
+            <div class="p-3 border-b border-slate-800">
+                <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2.5 flex items-center justify-between">
+                    <span>Müdahale Araçları</span>
+                    <span class="text-[10px] text-sky-400 font-normal">İç / Detay Silme</span>
+                </h2>
+                
+                <div class="grid grid-cols-2 gap-1.5">
+                    <button data-tool="wand" class="tool-btn tool-active p-2.5 rounded-lg border border-slate-700/80 bg-slate-800/50 hover:bg-slate-800 text-left transition flex flex-col gap-1">
+                        <div class="flex items-center justify-between">
+                            <i class="fa-solid fa-wand-sparkles text-sm"></i>
+                            <span class="text-[10px] opacity-75">Tıkla Sil</span>
+                        </div>
+                        <span class="text-xs font-medium">Sihirli Değnek</span>
+                    </button>
+
+                    <button data-tool="eraser" class="tool-btn p-2.5 rounded-lg border border-slate-700/80 bg-slate-800/50 hover:bg-slate-800 text-left transition flex flex-col gap-1">
+                        <div class="flex items-center justify-between">
+                            <i class="fa-solid fa-eraser text-sm"></i>
+                            <span class="text-[10px] opacity-75">Çizerek</span>
+                        </div>
+                        <span class="text-xs font-medium">Silgi Fırçası</span>
+                    </button>
+
+                    <button data-tool="restore" class="tool-btn p-2.5 rounded-lg border border-slate-700/80 bg-slate-800/50 hover:bg-slate-800 text-left transition flex flex-col gap-1">
+                        <div class="flex items-center justify-between">
+                            <i class="fa-solid fa-paintbrush text-sm"></i>
+                            <span class="text-[10px] opacity-75">Onar</span>
+                        </div>
+                        <span class="text-xs font-medium">Geri Getir</span>
+                    </button>
+
+                    <button data-tool="pan" class="tool-btn p-2.5 rounded-lg border border-slate-700/80 bg-slate-800/50 hover:bg-slate-800 text-left transition flex flex-col gap-1">
+                        <div class="flex items-center justify-between">
+                            <i class="fa-solid fa-hand text-sm"></i>
+                            <span class="text-[10px] opacity-75">Kaydır</span>
+                        </div>
+                        <span class="text-xs font-medium">Gezinme (El)</span>
+                    </button>
+                </div>
+
+                <!-- Hassas Mercek (Büyüteç) Ayarları -->
+                <div class="mt-3 p-2.5 rounded-lg bg-sky-950/30 border border-sky-500/30 space-y-2">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-medium text-sky-300 flex items-center gap-1.5">
+                            <i class="fa-solid fa-magnifying-glass-plus"></i> Canlı Mercek
+                        </span>
+                        <input type="checkbox" id="chkEnableLoupe" checked class="rounded bg-slate-800 border-slate-700 text-sky-500 focus:ring-0">
+                    </div>
+                    <div class="flex items-center justify-between text-[11px] text-slate-300">
+                        <span>Mercek Büyütme:</span>
+                        <div class="flex gap-1">
+                            <button data-lzoom="2" class="loupe-zoom-btn px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300">2x</button>
+                            <button data-lzoom="4" class="loupe-zoom-btn px-2 py-0.5 rounded bg-sky-600 text-white font-semibold">4x</button>
+                            <button data-lzoom="8" class="loupe-zoom-btn px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300">8x</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Seçili Araca Özel Alt Ayarlar -->
+                <div id="wandOptions" class="mt-3 p-2.5 rounded-lg bg-slate-950/60 border border-slate-800/80 space-y-2.5">
+                    <div>
+                        <div class="flex justify-between text-xs mb-1">
+                            <span class="text-slate-300">Değnek Hassasiyeti</span>
+                            <span id="wandTolVal" class="text-sky-400 font-mono">25</span>
+                        </div>
+                        <input type="range" id="wandTolerance" min="1" max="100" value="25">
+                    </div>
+                    <label class="flex items-center space-x-2 text-xs text-slate-300 cursor-pointer pt-1">
+                        <input type="checkbox" id="wandContiguous" checked class="rounded bg-slate-800 border-slate-700 text-sky-500 focus:ring-0">
+                        <span>Sadece kapalı alanı sil (Bitişik)</span>
+                    </label>
+                    <label class="flex items-center space-x-2 text-xs text-amber-300 cursor-pointer pt-0.5" title="Saç telleri ve ince çizgilerin arasındaki beyazları seçerken ana rengin silinmesini önler">
+                        <input type="checkbox" id="wandHairProtect" checked class="rounded bg-slate-800 border-slate-700 text-amber-500 focus:ring-0">
+                        <span>Saç & İnce Detay Korumalı Seçim</span>
+                    </label>
+                    <p class="text-[11px] text-slate-400 leading-relaxed">
+                        <i class="fa-solid fa-circle-info text-sky-400 mr-1"></i>Saç aralarındaki beyazlara tıkladığınızda saç tellerine zarar vermeden sadece beyazlığı ayrıştırır.
+                    </p>
+                </div>
+
+                <div id="brushOptions" class="hidden mt-3 p-2.5 rounded-lg bg-slate-950/60 border border-slate-800/80 space-y-2.5">
+                    <div>
+                        <div class="flex justify-between text-xs mb-1">
+                            <span class="text-slate-300">Fırça Boyutu</span>
+                            <span id="brushSizeVal" class="text-sky-400 font-mono">30px</span>
+                        </div>
+                        <input type="range" id="brushSize" min="2" max="150" value="30">
+                    </div>
+                    <div>
+                        <div class="flex justify-between text-xs mb-1">
+                            <span class="text-slate-300">Fırça Yumuşaklığı</span>
+                            <span id="brushSoftVal" class="text-sky-400 font-mono">50%</span>
+                        </div>
+                        <input type="range" id="brushSoftness" min="0" max="100" value="50">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Yüklü Resimler Listesi (Batch) -->
+            <div class="flex-1 flex flex-col min-h-0 p-3">
+                <div class="flex items-center justify-between mb-2">
+                    <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Resim Listesi</h2>
+                </div>
+                
+                <div id="imageList" class="flex-1 overflow-y-auto space-y-2 pr-1">
+                    <!-- Resim Kartları Buraya Gelecek -->
+                </div>
+            </div>
+        </aside>
+
+        <!-- Orta Alan: Canvas ve Görsel Düzenleyici -->
+        <main class="flex-1 flex flex-col bg-slate-950 relative overflow-hidden">
+            
+            <!-- Üst Bilgi & Arka Plan Önizleme Seçici -->
+            <div class="absolute top-3 left-3 right-3 flex items-center justify-between pointer-events-none z-10">
+                <div class="bg-slate-900/90 backdrop-blur border border-slate-800 px-3 py-1.5 rounded-lg pointer-events-auto flex items-center gap-2 shadow-lg">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <span id="activeFileName" class="text-xs font-medium text-slate-200 truncate max-w-[200px]">Resim yok</span>
+                    <span id="activeFileRes" class="text-[11px] text-slate-400 font-mono"></span>
+                </div>
+
+                <div class="bg-slate-900/90 backdrop-blur border border-slate-800 p-1 rounded-lg pointer-events-auto flex items-center gap-1 shadow-lg">
+                    <span class="text-[11px] text-slate-400 px-2">Zemin:</span>
+                    <button data-bg="checkerboard" class="bg-btn w-6 h-6 rounded border border-sky-500 checkerboard" title="Şeffaf Damalı"></button>
+                    <button data-bg="dark" class="bg-btn w-6 h-6 rounded border border-slate-700 bg-slate-950" title="Siyah Zemin (Beyaz hareleri test etmek için ideal)"></button>
+                    <button data-bg="gray" class="bg-btn w-6 h-6 rounded border border-slate-700 bg-slate-500" title="Gri Zemin (Yarı şeffaf saç/tüy kontrolü)"></button>
+                    <button data-bg="white" class="bg-btn w-6 h-6 rounded border border-slate-700 bg-white" title="Beyaz Zemin"></button>
+                    <button data-bg="green" class="bg-btn w-6 h-6 rounded border border-slate-700 bg-emerald-500" title="Yeşil Perde"></button>
+                </div>
+            </div>
+
+            <!-- Canvas Kapsayıcı -->
+            <div id="canvasViewport" class="flex-1 w-full h-full flex items-center justify-center overflow-hidden relative checkerboard cursor-crosshair">
+                <div id="canvasTransformContainer" class="relative origin-center shadow-2xl">
+                    <canvas id="mainCanvas" class="block pixelated-canvas"></canvas>
+                    <!-- Fırça İmleci Gösterimi -->
+                    <div id="brushCursor" class="pointer-events-none fixed rounded-full border border-white mix-blend-difference hidden z-40 transform -translate-x-1/2 -translate-y-1/2"></div>
+                </div>
+
+                <!-- HASSAS MERCEK (LOUPE / BÜYÜTEÇ) WIDGET -->
+                <div id="loupeWidget" class="pointer-events-none fixed z-50 hidden flex-col items-center">
+                    <div class="w-36 h-36 sm:w-44 sm:h-44 rounded-full border-4 border-sky-400 shadow-[0_10px_35px_rgba(0,0,0,0.85)] overflow-hidden relative checkerboard">
+                        <canvas id="loupeCanvas" width="176" height="176" class="w-full h-full block pixelated-canvas"></canvas>
+                        <!-- Mercek Nişangahı (Crosshair) -->
+                        <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+                            <div class="w-full h-[1px] bg-sky-400/50"></div>
+                            <div class="h-full w-[1px] bg-sky-400/50 absolute"></div>
+                            <div class="w-2.5 h-2.5 border border-rose-500 bg-rose-500/20 rounded-xs absolute"></div>
+                        </div>
+                    </div>
+                    <!-- Piksel Koordinat ve Renk Bilgisi -->
+                    <div class="mt-1.5 px-2.5 py-0.5 rounded-full bg-slate-900/95 border border-slate-700 text-[10px] font-mono text-sky-300 flex items-center gap-1.5 shadow-lg">
+                        <span id="loupeColorDot" class="w-2.5 h-2.5 rounded-full border border-white/40 inline-block"></span>
+                        <span id="loupeCoordText">X:0 Y:0</span>
+                        <span id="loupeZoomBadge" class="text-amber-400 font-bold">4x</span>
+                    </div>
+                </div>
+
+                <!-- Mobil & Tablet Hızlı Yüzen Araç Çubuğu (Alt Orta) -->
+                <div class="lg:hidden absolute bottom-3 left-1/2 -translate-x-1/2 bg-slate-900/95 backdrop-blur-md border border-slate-700/80 p-1.5 rounded-2xl shadow-2xl flex items-center gap-1.5 z-20">
+                    <button data-tool="wand" class="mobile-tool-btn tool-active px-3 py-2 rounded-xl text-xs font-medium flex items-center gap-1.5 transition">
+                        <i class="fa-solid fa-wand-sparkles"></i> <span>Değnek</span>
+                    </button>
+                    <button data-tool="eraser" class="mobile-tool-btn px-3 py-2 rounded-xl text-xs font-medium text-slate-300 flex items-center gap-1.5 transition">
+                        <i class="fa-solid fa-eraser"></i> <span>Silgi</span>
+                    </button>
+                    <button data-tool="restore" class="mobile-tool-btn px-3 py-2 rounded-xl text-xs font-medium text-slate-300 flex items-center gap-1.5 transition">
+                        <i class="fa-solid fa-paintbrush"></i> <span>Onar</span>
+                    </button>
+                    <button data-tool="pan" class="mobile-tool-btn px-3 py-2 rounded-xl text-xs font-medium text-slate-300 flex items-center gap-1.5 transition">
+                        <i class="fa-solid fa-hand"></i> <span>Kaydır</span>
+                    </button>
+                </div>
+
+                <div id="emptyHint" class="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none z-10">
+                    <div class="bg-slate-900/90 border border-slate-800 rounded-2xl px-8 py-6 shadow-xl pointer-events-auto">
+                        <i class="fa-solid fa-image text-4xl text-sky-400 mb-3"></i>
+                        <p class="text-sm font-semibold text-white">Henüz resim yok</p>
+                        <p class="text-xs text-slate-400 mt-1 mb-3">Sürükleyip bırakın, Ctrl+V ile yapıştırın ya da seçin</p>
+                        <label for="fileInput" class="cursor-pointer inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-medium"><i class="fa-solid fa-cloud-arrow-up"></i>Resim Ekle</label>
+                    </div>
+                </div>
+
+                <!-- Sürükle Bırak Yükleme Ekranı (Dropzone) -->
+                <div id="dropZoneOverlay" class="absolute inset-4 rounded-2xl border-2 border-dashed border-sky-500 bg-slate-900/90 backdrop-blur-sm flex flex-col items-center justify-center z-30 hidden">
+                    <i class="fa-solid fa-cloud-arrow-up text-5xl text-sky-400 mb-3 animate-bounce"></i>
+                    <h3 class="text-lg font-bold text-white">Resimleri Buraya Bırakın</h3>
+                    <p class="text-sm text-slate-400 mt-1">Birden fazla resmi aynı anda yükleyebilirsiniz</p>
+                </div>
+            </div>
+
+            <!-- Alt Durum Çubuğu -->
+            <div class="h-8 bg-slate-900 border-t border-slate-800 px-4 flex items-center justify-between text-[11px] text-slate-400 shrink-0">
+                <div class="flex items-center gap-4 truncate">
+                    <span id="statusText" class="truncate"><i class="fa-solid fa-check-circle text-emerald-400 mr-1"></i>Hazır. Ctrl+V ile resim yapıştırabilir, W/E/R/H ile araç değiştirebilirsiniz.</span>
+                </div>
+                <div class="hidden md:flex items-center gap-3 shrink-0">
+                    <span><kbd class="px-1.5 py-0.5 bg-slate-800 rounded border border-slate-700 text-slate-300">İki Parmak / Tekerlek</kbd> %3200 Zoom</span>
+                    <span><kbd class="px-1.5 py-0.5 bg-slate-800 rounded border border-slate-700 text-slate-300">Mercek</kbd> Hassas Seçim</span>
+                </div>
+            </div>
+        </main>
+
+        <!-- Sağ Panel: Otomatik Arka Plan & Kenar Ayarları -->
+        <aside id="rightSidebar" class="fixed lg:static inset-y-0 right-0 w-80 bg-slate-900 border-l border-slate-800 flex flex-col shrink-0 z-30 overflow-y-auto transform translate-x-full lg:translate-x-0 transition-transform duration-300 ease-in-out pt-14 lg:pt-0">
+            
+            <div class="p-4 border-b border-slate-800 space-y-4">
+                <div class="flex items-center justify-between">
+                    <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Otomatik Arka Plan Silici (Beyaz / Düz Renk)</h2>
+                    <span class="px-2 py-0.5 text-[10px] rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Canlı Filtre</span>
+                </div>
+
+                <!-- Silme Modu Seçimi -->
+                <div class="space-y-2">
+                    <label class="text-xs font-medium text-slate-300 block">Çalışma Modu</label>
+                    <div class="grid grid-cols-1 gap-2">
+                        <label class="flex items-start p-2.5 rounded-lg border border-slate-700/80 bg-slate-800/40 cursor-pointer hover:bg-slate-800/80 transition">
+                            <input type="radio" name="autoMode" value="outer" checked class="mt-0.5 text-sky-500 focus:ring-0 bg-slate-900 border-slate-700">
+                            <div class="ml-2.5">
+                                <span class="block text-xs font-semibold text-white">Sadece Dış Arka Planı Sil</span>
+                                <span class="block text-[11px] text-slate-400 mt-0.5">Nesnenin içindeki beyazları korur, dış çerçevedeki beyazlığı siler. İstenmeyen iç boşlukları Sihirli Değnek ile seçip silebilirsiniz.</span>
+                            </div>
+                        </label>
+                        
+                        <label class="flex items-start p-2.5 rounded-lg border border-slate-700/80 bg-slate-800/40 cursor-pointer hover:bg-slate-800/80 transition">
+                            <input type="radio" name="autoMode" value="all" class="mt-0.5 text-sky-500 focus:ring-0 bg-slate-900 border-slate-700">
+                            <div class="ml-2.5">
+                                <span class="block text-xs font-semibold text-white">Tüm Beyazları Sil (İç + Dış)</span>
+                                <span class="block text-[11px] text-slate-400 mt-0.5">Kontürün içinde kalan kapalı beyaz arka planlar dahil resimdeki tüm beyaz tonları tek seferde siler.</span>
+                            </div>
+                        </label>
+
+                        <label class="flex items-start p-2.5 rounded-lg border border-slate-700/80 bg-slate-800/40 cursor-pointer hover:bg-slate-800/80 transition">
+                            <input type="radio" name="autoMode" value="manual" class="mt-0.5 text-sky-500 focus:ring-0 bg-slate-900 border-slate-700">
+                            <div class="ml-2.5">
+                                <span class="block text-xs font-semibold text-white">Sadece Manuel (Otomatik Kapalı)</span>
+                                <span class="block text-[11px] text-slate-400 mt-0.5">Otomatik silme yapmaz. Sadece Sihirli Değnek ve Fırça ile tıkladığınız yerleri siler.</span>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Beyaz Toleransı -->
+                <div class="space-y-1.5 pt-2">
+                    <div class="flex justify-between text-xs">
+                        <span class="text-slate-300 font-medium">Beyazlık Toleransı</span>
+                        <span id="valTolerance" class="text-sky-400 font-mono font-semibold">35</span>
+                    </div>
+                    <input type="range" id="paramTolerance" min="0" max="150" value="35">
+                    <p class="text-[11px] text-slate-500">Değeri artırmak griye çalan gölgeli beyazları da temizler.</p>
+                </div>
+            </div>
+
+            <!-- Kenar Geliştirme Kontrolleri -->
+            <div class="p-4 border-b border-slate-800 space-y-4">
+                <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                    <i class="fa-solid fa-sliders text-sky-400"></i>
+                    <span>Kenar Arındırma & Alfa Motoru</span>
+                </h2>
+
+                <!-- Kenar İyileştirme Yoğunluğu (Edge Refinement Intensity) -->
+                <div class="space-y-1.5">
+                    <div class="flex justify-between text-xs">
+                        <span class="text-slate-300 font-medium">Kenar İyileştirme Yoğunluğu</span>
+                        <span id="valRefinement" class="text-sky-400 font-mono font-semibold">65%</span>
+                    </div>
+                    <input type="range" id="paramRefinement" min="0" max="100" step="5" value="65">
+                    <p class="text-[11px] text-slate-500">Belirsiz (Trimap) sınır bölgesindeki beyaz karışımını temizler ve yarı şeffaf geçişleri dengeler.</p>
+                </div>
+
+                <!-- Beyaz Hare Giderme (Edge Decontamination Toggle) -->
+                <div class="p-2.5 rounded-lg bg-slate-800/50 border border-slate-700/70 space-y-2">
+                    <label class="flex items-center justify-between cursor-pointer">
+                        <div>
+                            <span class="text-xs font-semibold text-emerald-300 block">Beyaz Hare Giderici (Decontamination)</span>
+                            <span class="text-[10px] text-slate-400 block">Kenar piksellerinden beyaz boya taşmasını (color spill) matematiksel olarak söker.</span>
+                        </div>
+                        <input type="checkbox" id="paramDecontaminate" checked class="rounded bg-slate-900 border-slate-600 text-emerald-500 focus:ring-0 w-4 h-4 shrink-0 ml-2">
+                    </label>
+
+                    <label class="flex items-center justify-between cursor-pointer pt-1.5 border-t border-slate-700/50">
+                        <div>
+                            <span class="text-xs font-semibold text-amber-300 block">İnce Detay & Saç Koruma</span>
+                            <span class="text-[10px] text-slate-400 block">Saç, kürk ve ince çizgilerin aşınmasını veya daralmasını önler.</span>
+                        </div>
+                        <input type="checkbox" id="paramPreserveDetails" checked class="rounded bg-slate-900 border-slate-600 text-amber-500 focus:ring-0 w-4 h-4 shrink-0 ml-2">
+                    </label>
+                </div>
+
+                <!-- Kenar Daraltma (Choke / Defringe) -->
+                <div class="space-y-1.5">
+                    <div class="flex justify-between text-xs">
+                        <span class="text-slate-300 font-medium">Kenar Daraltma (Mekanik Aşındırma)</span>
+                        <span id="valChoke" class="text-sky-400 font-mono font-semibold">0 px</span>
+                    </div>
+                    <input type="range" id="paramChoke" min="0" max="10" step="1" value="0">
+                    <p class="text-[11px] text-slate-500">İnce detayları korumak için 0'da bırakın; sadece sert logolarda artırın.</p>
+                </div>
+
+                <!-- Kenar Yumuşatma (Feather / Blur) -->
+                <div class="space-y-1.5">
+                    <div class="flex justify-between text-xs">
+                        <span class="text-slate-300 font-medium">Kenar Yumuşatma (Feather Yarıçapı)</span>
+                        <span id="valFeather" class="text-sky-400 font-mono font-semibold">0.5 px</span>
+                    </div>
+                    <input type="range" id="paramFeather" min="0" max="10" step="0.5" value="0.5">
+                    <p class="text-[11px] text-slate-500">Sadece sınır (unknown) bölgesindeki tırtıklı pikselleri yumuşatır.</p>
+                </div>
+
+                <!-- Kenar Keskinleştirme (Contrast / Sharpen) -->
+                <div class="space-y-1.5">
+                    <div class="flex justify-between text-xs">
+                        <span class="text-slate-300 font-medium">Kenar Keskinleştirme</span>
+                        <span id="valSharpen" class="text-sky-400 font-mono font-semibold">15%</span>
+                    </div>
+                    <input type="range" id="paramSharpen" min="0" max="95" step="5" value="15">
+                    <p class="text-[11px] text-slate-500">Yumuşatılmış kenarların bulanıklığını alıp net bir kontür oluşturur.</p>
+                </div>
+            </div>
+
+            <div class="p-4 border-b border-slate-800 space-y-3">
+                <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-1.5"><i class="fa-solid fa-file-export text-sky-400"></i><span>Dışa Aktarma</span></h2>
+                <label class="flex items-center justify-between text-xs text-slate-300 cursor-pointer">
+                    <span>Kaydederken şeffaf boşlukları kırp (sadece resim)</span>
+                    <input type="checkbox" id="chkCrop" checked class="rounded bg-slate-900 border-slate-600 text-sky-500 focus:ring-0 w-4 h-4">
+                </label>
+                <div>
+                    <div class="flex justify-between text-xs mb-1"><span class="text-slate-300">Kırpma Payı</span><span id="valPad" class="text-sky-400 font-mono">0 px</span></div>
+                    <input type="range" id="paramPad" min="0" max="100" value="0">
+                </div>
+                <button id="btnCopy" class="w-full py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-medium transition flex items-center justify-center gap-2"><i class="fa-regular fa-copy text-sky-400"></i><span>Panoya Kopyala (Canva / Affinity'ye yapıştır)</span></button>
+            </div>
+
+            <!-- Toplu İşlem ve Sıfırlama Butonları -->
+            <div class="p-4 mt-auto space-y-2.5 bg-slate-900/50">
+                <button id="btnApplyToAll" class="w-full py-2.5 px-3 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 text-xs font-semibold transition flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-clone"></i>
+                    <span>Bu Kenar Ayarlarını Tüm Resimlere Uygula</span>
+                </button>
+
+                <button id="btnResetCurrent" class="w-full py-2 px-3 rounded-lg bg-slate-800 hover:bg-rose-950/60 text-slate-300 hover:text-rose-300 border border-slate-700 hover:border-rose-800/60 text-xs font-medium transition flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-arrow-rotate-left"></i>
+                    <span>Bu Resmi Orijinal Haline Sıfırla</span>
+                </button>
+            </div>
+
+        </aside>
+    </div>
+
+    <!-- Bildirim Kutusu (Toast) -->
+    <div id="toast" class="fixed bottom-12 right-5 bg-slate-800 border border-sky-500/40 text-white px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 transform translate-y-20 opacity-0 transition-all duration-300 z-50 pointer-events-none">
+        <i id="toastIcon" class="fa-solid fa-circle-check text-sky-400 text-lg"></i>
+        <div>
+            <h4 id="toastTitle" class="text-xs font-bold">İşlem Başarılı</h4>
+            <p id="toastMsg" class="text-[11px] text-slate-300">Ayarlar tüm resimlere uygulandı.</p>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * UYGULAMA MİMARİSİ VE DURUM YÖNETİMİ
+         * Her resim kendi orijinal piksellerini, otomatik ayarlarını ve 
+         * kullanıcının yaptığı manuel müdahaleleri (Sihirli değnek, silgi, geri getirme) ayrı tutar.
+         * Böylece kullanıcı fırçayla bir yeri sildikten sonra bile kenar yumuşatma/tolerans ayarlarıyla oynayabilir!
+         */
+
+        const state = {
+            images: [], // Yüklü resim nesneleri
+            activeIndex: -1,
+            currentTool: 'wand', // 'wand', 'eraser', 'restore', 'pan'
+            wandTolerance: 25,
+            wandContiguous: true,
+            wandHairProtect: true,
+            brushSize: 30,
+            brushSoftness: 50,
+            zoom: 1,
+            panX: 0,
+            panY: 0,
+            isDragging: false,
+            isSpacePressed: false,
+            isComparing: false,
+            lastMouseX: 0,
+            lastMouseY: 0,
+            // Hassas Mercek (Loupe) & Dokunmatik (Touch) Durumu
+            loupeEnabled: true,
+            loupeZoom: 4,
+            touchStartDist: 0,
+            touchStartZoom: 1,
+            touchStartMidX: 0,
+            touchStartMidY: 0,
+            touchStartPanX: 0,
+            touchStartPanY: 0,
+            wandTouchPending: false,
+            wandTouchCoords: { x: 0, y: 0 }
+        };
+
+        // DOM Elementleri
+        const mainCanvas = document.getElementById('mainCanvas');
+        const ctx = mainCanvas.getContext('2d', { willReadFrequently: true });
+        const canvasViewport = document.getElementById('canvasViewport');
+        const transformContainer = document.getElementById('canvasTransformContainer');
+        const brushCursor = document.getElementById('brushCursor');
+        canvasViewport.appendChild(brushCursor); // zoom/pan dönüşümünden bağımsız olsun
+        const imageListEl = document.getElementById('imageList');
+        const statusText = document.getElementById('statusText');
+
+        // Mercek (Loupe) Elementleri
+        const loupeWidget = document.getElementById('loupeWidget');
+        const loupeCanvas = document.getElementById('loupeCanvas');
+        const loupeCtx = loupeCanvas.getContext('2d');
+        const loupeCoordText = document.getElementById('loupeCoordText');
+        const loupeColorDot = document.getElementById('loupeColorDot');
+        const loupeZoomBadge = document.getElementById('loupeZoomBadge');
+        const zoomPresetSelect = document.getElementById('zoomPresetSelect');
+
+        // Parametre Elementleri
+        const paramTolerance = document.getElementById('paramTolerance');
+        const paramRefinement = document.getElementById('paramRefinement');
+        const paramDecontaminate = document.getElementById('paramDecontaminate');
+        const paramPreserveDetails = document.getElementById('paramPreserveDetails');
+        const paramChoke = document.getElementById('paramChoke');
+        const paramFeather = document.getElementById('paramFeather');
+        const paramSharpen = document.getElementById('paramSharpen');
+        const autoModeRadios = document.getElementsByName('autoMode');
+
+        let pipelineRafId = null;
+        function schedulePipelineUpdate(imgObj) {
+            if (pipelineRafId) cancelAnimationFrame(pipelineRafId);
+            pipelineRafId = requestAnimationFrame(() => {
+                processImagePipeline(imgObj);
+                renderImageList();
+                pipelineRafId = null;
+            });
+        }
+
+        // Bildirim Gösterimi
+        function showToast(title, msg, icon = 'fa-circle-check text-emerald-400') {
+            const toast = document.getElementById('toast');
+            document.getElementById('toastTitle').textContent = title;
+            document.getElementById('toastMsg').textContent = msg;
+            document.getElementById('toastIcon').className = `fa-solid ${icon} text-lg`;
+            toast.classList.remove('translate-y-20', 'opacity-0');
+            setTimeout(() => {
+                toast.classList.add('translate-y-20', 'opacity-0');
+            }, 3000);
+        }
+
+        // Yeni Resmi State'e Ekle
+        function addImageToState(name, width, height, originalImageData) {
+            const totalPixels = width * height;
+            // userMask: 0 = Otomatik karara bırak, 1 = Kullanıcı zorla sildi (Değnek/Silgi), 2 = Kullanıcı zorla geri getirdi (Onar)
+            // 100..200 = Yarı şeffaf alfa düzeltmesi (Saç araları veya yumuşak fırça)
+            const userMask = new Uint8Array(totalPixels);
+            
+            const newImgObj = {
+                id: Date.now() + Math.random(),
+                name: name,
+                width: width,
+                height: height,
+                originalData: originalImageData,
+                processedData: new ImageData(width, height),
+                userMask: userMask,
+                history: [new Uint8Array(userMask)], // Geri al geçmişi
+                historyIndex: 0,
+                params: {
+                    mode: 'outer', // 'outer', 'all', 'manual'
+                    tolerance: 35,
+                    refinement: 65,
+                    decontaminate: true,
+                    preserveDetails: true,
+                    choke: 0,
+                    feather: 0.5,
+                    sharpen: 15
+                },
+                thumbnailUrl: ''
+            };
+
+            state.images.push(newImgObj);
+            processImagePipeline(newImgObj);
+            updateBatchCount();
+            renderImageList();
+            return newImgObj;
+        }
+
+        function dropSamples() {
+            if (!state.images.some(i => i.isSample)) return;
+            state.images = state.images.filter(i => !i.isSample);
+            state.activeIndex = -1;
+        }
+
+        // Geçmişe (Undo/Redo) Kayıt Ekle
+        function saveHistory(imgObj) {
+            // İleri sarma geçmişini kes
+            imgObj.history = imgObj.history.slice(0, imgObj.historyIndex + 1);
+            // Kopyasını sakla
+            imgObj.history.push(new Uint8Array(imgObj.userMask));
+            if (imgObj.history.length > 25) {
+                imgObj.history.shift();
+            } else {
+                imgObj.historyIndex++;
+            }
+            updateUndoRedoButtons();
+        }
+
+        function updateUndoRedoButtons() {
+            const img = state.images[state.activeIndex];
+            if (!img) return;
+            document.getElementById('btnUndo').disabled = img.historyIndex <= 0;
+            document.getElementById('btnRedo').disabled = img.historyIndex >= img.history.length - 1;
+        }
+
+        /**
+         * ============================================================================
+         * MODÜLER ARKA PLAN SİLME, TRIMAP VE KENAR ARINDIRMA MOTORU (EDGE ENGINE)
+         * ============================================================================
+         * 1. sampleBoundaryBackground: Görüntünün dış sınırlarından gerçek arka plan beyazını örnekler.
+         * 2. buildBaseMaskAndTrimap: Flood-Fill ile dış arka planı bulur; Kesin Arka Plan (0),
+         *    Kesin Ön Plan (255) ve Belirsiz Kenar/Saç Bölgesi (Trimap = 128) üretir.
+         * 3. refineEdgeAlpha: İnce saç/kürk detaylarını koruyarak renk ayrışımı (color unmixing)
+         *    ile gerçek alfa değerini hesaplar.
+         * 4. decontaminateEdges: Yarı şeffaf kenar piksellerindeki beyaz renk taşmasını (white halo)
+         *    matematiksel ters karışım ve komşu ön plan rengi ile temizler.
+         */
+
+        // 1. Görüntü Kenarlarından Arka Plan Rengini Örnekle
+        function sampleBoundaryBackground(src, w, h) {
+            const px = [];
+            const add = (x, y) => { const i4 = (y * w + x) * 4; if (src[i4 + 3] >= 128) px.push(src[i4], src[i4 + 1], src[i4 + 2]); };
+            const step = Math.max(1, Math.floor(Math.min(w, h) / 100));
+            for (let x = 0; x < w; x += step) { add(x, 0); add(x, h - 1); }
+            for (let y = 0; y < h; y += step) { add(0, y); add(w - 1, y); }
+            const n = px.length / 3;
+            if (n === 0) return { r: 255, g: 255, b: 255 };
+            let r = 0, g = 0, b = 0;
+            for (let i = 0; i < px.length; i += 3) { r += px[i]; g += px[i + 1]; b += px[i + 2]; }
+            r /= n; g /= n; b /= n;
+            // Kenarların çoğu aynı düz renkse (beyaz, yeşil perde vb.) o rengi arka plan say
+            let close = 0;
+            for (let i = 0; i < px.length; i += 3) {
+                if (Math.hypot(px[i] - r, px[i + 1] - g, px[i + 2] - b) < 40) close++;
+            }
+            if (close / n > 0.6) return { r: Math.round(r), g: Math.round(g), b: Math.round(b) };
+            return { r: 255, g: 255, b: 255 };
+        }
+
+        // Pikselin Arka Plan Beyazına Olan Algısal ve Krominans Mesafesi
+        function computeBgDifference(r, g, b, bgR, bgG, bgB) {
+            const dr = bgR - r;
+            const dg = bgG - g;
+            const db = bgB - b;
+            const euclidean = Math.sqrt(dr * dr + dg * dg + db * db);
+
+            // Renk doygunluğu (Chroma) farkı: Saç telleri veya renkli ince detaylar
+            // açık renkli olsa bile doygunluk içerir, beyaz arka plan ise nötrdür.
+            const maxC = Math.max(r, g, b);
+            const minC = Math.min(r, g, b);
+            const chroma = maxC - minC;
+
+            return { euclidean, chroma, effectiveDist: euclidean + chroma * 0.65 };
+        }
+
+        // 2. Arka Plan Algılama & Trimap Oluşturma (0: Arka Plan, 128: Belirsiz Sınır, 255: Ön Plan)
+        function detectBackgroundAndTrimap(src, w, h, bgCol, params, userMask) {
+            const total = w * h;
+            const alpha = new Float32Array(total);
+            alpha.fill(255.0);
+
+            // Trimap: 0 = BG, 128 = Unknown (Transition/Hair Zone), 255 = FG
+            const trimap = new Uint8Array(total);
+            trimap.fill(255);
+
+            const { mode, tolerance, refinement, preserveDetails } = params;
+            const baseTol = tolerance * 1.15;
+            // Refinement yoğunluğuna göre belirsiz (unknown) geçiş bandı genişliği
+            const transitionBand = Math.max(6, (tolerance * 0.45) + (refinement * 0.45));
+
+            if (mode === 'all') {
+                for (let i = 0; i < total; i++) {
+                    const i4 = i * 4;
+                    if (src[i4 + 3] === 0) {
+                        alpha[i] = 0;
+                        trimap[i] = 0;
+                        continue;
+                    }
+                    const diff = computeBgDifference(src[i4], src[i4 + 1], src[i4 + 2], bgCol.r, bgCol.g, bgCol.b);
+                    const d = preserveDetails ? diff.effectiveDist : diff.euclidean;
+
+                    if (d <= baseTol) {
+                        alpha[i] = 0;
+                        trimap[i] = 0;
+                    } else if (d <= baseTol + transitionBand) {
+                        trimap[i] = 128;
+                        alpha[i] = ((d - baseTol) / transitionBand) * 255.0;
+                    }
+                }
+            } else if (mode === 'outer') {
+                // Kenar Bağlantılı Flood Fill (İç beyazları korur)
+                const visited = new Uint8Array(total);
+                const queue = new Int32Array(total);
+                let head = 0, tail = 0;
+
+                const trySeed = (x, y) => {
+                    const i = y * w + x;
+                    if (visited[i]) return;
+                    const i4 = i * 4;
+                    const diff = computeBgDifference(src[i4], src[i4 + 1], src[i4 + 2], bgCol.r, bgCol.g, bgCol.b);
+                    const d = preserveDetails ? diff.effectiveDist : diff.euclidean;
+
+                    if (src[i4 + 3] === 0 || d <= baseTol) {
+                        visited[i] = 1;
+                        alpha[i] = 0;
+                        trimap[i] = 0;
+                        queue[tail++] = i;
+                    }
+                };
+
+                for (let x = 0; x < w; x++) { trySeed(x, 0); trySeed(x, h - 1); }
+                for (let y = 0; y < h; y++) { trySeed(0, y); trySeed(w - 1, y); }
+
+                while (head < tail) {
+                    const curr = queue[head++];
+                    const cx = curr % w;
+                    const cy = (curr / w) | 0;
+
+                    // 8-Yönlü komşuluk kontrolü (Saç telleri arasındaki çapraz boşluklara sızabilmek için)
+                    for (let dy = -1; dy <= 1; dy++) {
+                        const ny = cy + dy;
+                        if (ny < 0 || ny >= h) continue;
+                        for (let dx = -1; dx <= 1; dx++) {
+                            if (dx === 0 && dy === 0) continue;
+                            const nx = cx + dx;
+                            if (nx < 0 || nx >= w) continue;
+
+                            const n = ny * w + nx;
+                            if (visited[n]) continue;
+
+                            const n4 = n * 4;
+                            const diff = computeBgDifference(src[n4], src[n4 + 1], src[n4 + 2], bgCol.r, bgCol.g, bgCol.b);
+                            const d = preserveDetails ? diff.effectiveDist : diff.euclidean;
+
+                            if (src[n4 + 3] === 0 || d <= baseTol) {
+                                visited[n] = 1;
+                                alpha[n] = 0;
+                                trimap[n] = 0;
+                                queue[tail++] = n;
+                            } else if (d <= baseTol + transitionBand) {
+                                // Belirsiz kenar pikseli (Trimap Unknown)
+                                visited[n] = 1;
+                                trimap[n] = 128;
+                                alpha[n] = ((d - baseTol) / transitionBand) * 255.0;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Kullanıcının Manuel Müdahalelerini (Sihirli Değnek / Fırça) Trimap ve Alfa ile Birleştir
+            for (let i = 0; i < total; i++) {
+                const um = userMask[i];
+                if (um === 1) {
+                    alpha[i] = 0;
+                    trimap[i] = 0;
+                } else if (um === 2) {
+                    alpha[i] = 255;
+                    trimap[i] = 255;
+                } else if (um >= 100 && um <= 200) {
+                    const manualAlpha = ((um - 100) / 100.0) * 255.0;
+                    alpha[i] = Math.min(alpha[i], manualAlpha);
+                    trimap[i] = 128; // Kenar arındırmaya dahil et
+                }
+            }
+
+            // Arka plana komşu olan 1-2 piksellik ön plan sınırını da Trimap Unknown (128) bölgesine dahil et
+            // Böylece Sihirli Değnek ile silinen iç kontürlerin kenarları da beyaz hareden arındırılır.
+            if (refinement > 0) {
+                for (let y = 1; y < h - 1; y++) {
+                    const row = y * w;
+                    for (let x = 1; x < w - 1; x++) {
+                        const i = row + x;
+                        if (trimap[i] === 255 && userMask[i] !== 2) {
+                            if (trimap[i - 1] === 0 || trimap[i + 1] === 0 || trimap[i - w] === 0 || trimap[i + w] === 0) {
+                                trimap[i] = 128;
+                            }
+                        }
+                    }
+                }
+            }
+
+            return { alpha, trimap };
+        }
+
+        // 3. Kenar Duyarlı Alfa İyileştirme (Edge-Aware Alpha Matting & Hair Preservation)
+        function refineEdgeAlpha(src, alpha, trimap, userMask, w, h, bgCol, params) {
+            const { refinement, preserveDetails, choke, feather, sharpen } = params;
+            const total = w * h;
+
+            // A) Belirsiz (Trimap 128) Piksellerde Renk Ayrışımı Tabanlı Alfa Tahmini
+            if (refinement > 0) {
+                const refStrength = refinement / 100.0;
+                for (let y = 1; y < h - 1; y++) {
+                    const row = y * w;
+                    for (let x = 1; x < w - 1; x++) {
+                        const i = row + x;
+                        if (trimap[i] !== 128 || userMask[i] === 2) continue;
+
+                        const i4 = i * 4;
+                        const r = src[i4], g = src[i4 + 1], b = src[i4 + 2];
+
+                        // Pikselin arka plan beyazından ne kadar uzaklaştığına göre doğal opaklık (unmixing alpha)
+                        const maxChannelDrop = Math.max(
+                            Math.max(0, bgCol.r - r) / Math.max(1, bgCol.r),
+                            Math.max(0, bgCol.g - g) / Math.max(1, bgCol.g),
+                            Math.max(0, bgCol.b - b) / Math.max(1, bgCol.b)
+                        );
+                        const chroma = (Math.max(r, g, b) - Math.min(r, g, b)) / 255.0;
+
+                        // Saç ve ince detay koruma açıksa, renk/kontrast taşıyan ince tellerin alfasını güçlendir
+                        let estimatedA = Math.min(1.0, (maxChannelDrop * 1.45) + (chroma * (preserveDetails ? 1.35 : 0.6))) * 255.0;
+
+                        // Mevcut alfa ile tahmin edilen alfayı harmanla
+                        alpha[i] = alpha[i] * (1 - refStrength * 0.65) + estimatedA * (refStrength * 0.65);
+                    }
+                }
+            }
+
+            // B) İsteğe Bağlı Mekanik Kenar Daraltma (Choke) - Sadece kullanıcı artırdıysa
+            if (choke > 0) {
+                for (let step = 0; step < choke; step++) {
+                    const nextAlpha = new Float32Array(alpha);
+                    for (let y = 1; y < h - 1; y++) {
+                        const row = y * w;
+                        for (let x = 1; x < w - 1; x++) {
+                            const i = row + x;
+                            if (alpha[i] > 0 && userMask[i] !== 2) {
+                                // İnce detay koruma açıksa tek piksellik saç tellerini tamamen yok etme
+                                let minA = Math.min(alpha[i], alpha[i - 1], alpha[i + 1], alpha[i - w], alpha[i + w]);
+                                if (preserveDetails && alpha[i] > 180 && minA === 0) {
+                                    nextAlpha[i] = alpha[i] * 0.65;
+                                } else {
+                                    nextAlpha[i] = minA;
+                                }
+                            }
+                        }
+                    }
+                    alpha = nextAlpha;
+                }
+            }
+
+            // C) Kenar Yumuşatma (Edge-Only Feathering)
+            // Nesnenin içini bulandırmaz ve tamamen şeffaf (0) arka plan piksellerini şişirmez!
+            if (feather > 0) {
+                const radius = Math.max(1, Math.round(feather * 2));
+                const blurred = fastBoxBlur(alpha, w, h, radius);
+                for (let i = 0; i < total; i++) {
+                    if (alpha[i] === 0) continue; // Tam şeffaf pikselleri 0'da tut
+                    if (userMask[i] === 2) continue;
+                    // Sadece sınır bölgesinde veya yarı şeffaf piksellerde yumuşatma uygula
+                    if (trimap[i] === 128 || alpha[i] < 250) {
+                        alpha[i] = preserveDetails ? Math.max(alpha[i] * 0.7, blurred[i]) : blurred[i];
+                    }
+                }
+            }
+
+            // D) Kenar Keskinleştirme (Alfa Kontrastı)
+            if (sharpen > 0) {
+                const sFactor = sharpen / 100.0;
+                const lowCut = sFactor * 110;
+                const highCut = 255 - (sFactor * 110);
+                const range = Math.max(1, highCut - lowCut);
+
+                for (let i = 0; i < total; i++) {
+                    if (alpha[i] === 0 || userMask[i] === 2) continue;
+                    let a = alpha[i];
+                    if (a <= lowCut) a = 0;
+                    else if (a >= highCut) a = 255;
+                    else a = ((a - lowCut) / range) * 255;
+                    alpha[i] = a;
+                }
+            }
+
+            return alpha;
+        }
+
+        // 4. Beyaz Hare ve Renk Taşması Temizliği (Edge Color Decontamination / Unmixing)
+        function decontaminateEdges(src, dst, alpha, w, h, bgCol, enableDecontam) {
+            const total = w * h;
+
+            for (let i = 0; i < total; i++) {
+                const i4 = i * 4;
+                const aByte = Math.max(0, Math.min(255, Math.round(alpha[i])));
+
+                if (src[i4 + 3] === 0 || aByte === 0) {
+                    dst[i4] = 0;
+                    dst[i4 + 1] = 0;
+                    dst[i4 + 2] = 0;
+                    dst[i4 + 3] = 0;
+                    continue;
+                }
+
+                let r = src[i4];
+                let g = src[i4 + 1];
+                let b = src[i4 + 2];
+
+                // Yarı şeffaf kenar piksellerinden beyaz arka plan katkısını sök (Unmix)
+                // Gözlenen Renk: C = a * F + (1 - a) * B  =>  Gerçek Ön Plan Rengi: F = (C - (1 - a) * B) / a
+                if (enableDecontam && aByte < 252) {
+                    const aNorm = Math.max(0.18, aByte / 255.0); // Çok düşük alfada renk patlamasını önlemek için alt sınır
+                    const invA = 1.0 - aNorm;
+
+                    let fR = (r - invA * bgCol.r) / aNorm;
+                    let fG = (g - invA * bgCol.g) / aNorm;
+                    let fB = (b - invA * bgCol.b) / aNorm;
+
+                    // Eğer piksel çok şeffafsa (aByte < 140), yakın çevredeki tam opak ön plan komşusunun renginden destek al
+                    if (aByte < 140) {
+                        const cx = i % w;
+                        const cy = (i / w) | 0;
+                        let nrSum = 0, ngSum = 0, nbSum = 0, nCount = 0;
+
+                        for (let dy = -2; dy <= 2; dy++) {
+                            const ny = cy + dy;
+                            if (ny < 0 || ny >= h) continue;
+                            for (let dx = -2; dx <= 2; dx++) {
+                                const nx = cx + dx;
+                                if (nx < 0 || nx >= w) continue;
+                                const ni = ny * w + nx;
+                                if (alpha[ni] >= 220) {
+                                    const ni4 = ni * 4;
+                                    nrSum += src[ni4];
+                                    ngSum += src[ni4 + 1];
+                                    nbSum += src[ni4 + 2];
+                                    nCount++;
+                                }
+                            }
+                        }
+
+                        if (nCount > 0) {
+                            const nR = nrSum / nCount;
+                            const nG = ngSum / nCount;
+                            const nB = nbSum / nCount;
+                            const blend = 1.0 - (aByte / 140.0);
+                            fR = fR * (1 - blend * 0.6) + nR * (blend * 0.6);
+                            fG = fG * (1 - blend * 0.6) + nG * (blend * 0.6);
+                            fB = fB * (1 - blend * 0.6) + nB * (blend * 0.6);
+                        }
+                    }
+
+                    // Orijinal pikselden daha parlak (beyaz) olmamasını garanti et
+                    r = Math.max(0, Math.min(r, Math.round(fR)));
+                    g = Math.max(0, Math.min(g, Math.round(fG)));
+                    b = Math.max(0, Math.min(b, Math.round(fB)));
+                }
+
+                dst[i4] = r;
+                dst[i4 + 1] = g;
+                dst[i4 + 2] = b;
+                dst[i4 + 3] = aByte;
+            }
+        }
+
+        // Ana Görüntü İşleme Hattı Çağrısı
+        function processImagePipeline(imgObj) {
+            const w = imgObj.width;
+            const h = imgObj.height;
+            const src = imgObj.originalData.data;
+            const dst = imgObj.processedData.data;
+
+            // 1. Sınırlardan arka plan beyazını örnekle
+            const bgCol = sampleBoundaryBackground(src, w, h);
+
+            // 2. Arka plan tespiti ve Trimap (BG / Unknown / FG) üretimi
+            const { alpha: baseAlpha, trimap } = detectBackgroundAndTrimap(
+                src, w, h, bgCol, imgObj.params, imgObj.userMask
+            );
+
+            // 3. Kenar duyarlı Alfa İyileştirme ve Saç/Detay Koruma
+            const refinedAlpha = refineEdgeAlpha(
+                src, baseAlpha, trimap, imgObj.userMask, w, h, bgCol, imgObj.params
+            );
+
+            // 4. Beyaz Hare Giderme (Color Decontamination) ve Çıktı Yazımı
+            decontaminateEdges(
+                src, dst, refinedAlpha, w, h, bgCol, imgObj.params.decontaminate
+            );
+
+            // Küçük önizleme resmini ve ana ekranı güncelle
+            updateThumbnail(imgObj);
+            if (state.images[state.activeIndex] === imgObj) {
+                renderMainCanvas();
+            }
+        }
+
+        // Hızlı 2D Box Blur (Alfa Kanalı Yumuşatma İçin)
+        function fastBoxBlur(scl, w, h, r) {
+            let tcl = new Float32Array(scl.length);
+            // Yatay geçiş
+            for (let i = 0; i < h; i++) {
+                let ti = i * w, li = ti, ri = ti + r;
+                let fv = scl[ti], lv = scl[ti + w - 1], val = (r + 1) * fv;
+                for (let j = 0; j < r; j++) val += scl[ti + j];
+                for (let j = 0; j <= r; j++) { val += scl[ri++] - fv; tcl[ti++] = val / (r + r + 1); }
+                for (let j = r + 1; j < w - r; j++) { val += scl[ri++] - scl[li++]; tcl[ti++] = val / (r + r + 1); }
+                for (let j = w - r; j < w; j++) { val += lv - scl[li++]; tcl[ti++] = val / (r + r + 1); }
+            }
+            // Dikey geçiş
+            let out = new Float32Array(scl.length);
+            for (let i = 0; i < w; i++) {
+                let ti = i, li = ti, ri = ti + r * w;
+                let fv = tcl[ti], lv = tcl[ti + w * (h - 1)], val = (r + 1) * fv;
+                for (let j = 0; j < r; j++) val += tcl[ti + j * w];
+                for (let j = 0; j <= r; j++) { val += tcl[ri] - fv; out[ti] = val / (r + r + 1); ri += w; ti += w; }
+                for (let j = r + 1; j < h - r; j++) { val += tcl[ri] - tcl[li]; out[ti] = val / (r + r + 1); li += w; ri += w; ti += w; }
+                for (let j = h - r; j < h; j++) { val += lv - tcl[li]; out[ti] = val / (r + r + 1); li += w; ti += w; }
+            }
+            return out;
+        }
+
+        // Küçük Önizleme (Thumbnail) Oluştur
+        function updateThumbnail(imgObj) {
+            if (!imgObj._full) imgObj._full = document.createElement('canvas');
+            if (!imgObj._thumb) imgObj._thumb = document.createElement('canvas');
+            const f = imgObj._full, t = imgObj._thumb;
+            f.width = imgObj.width; f.height = imgObj.height;
+            f.getContext('2d').putImageData(imgObj.processedData, 0, 0);
+            const sc = Math.min(1, 96 / Math.max(imgObj.width, imgObj.height));
+            t.width = Math.max(1, Math.round(imgObj.width * sc));
+            t.height = Math.max(1, Math.round(imgObj.height * sc));
+            t.getContext('2d').drawImage(f, 0, 0, t.width, t.height);
+            imgObj.thumbnailUrl = t.toDataURL('image/png');
+        }
+
+        // Ana Canvası Çiz
+        function renderMainCanvas() {
+            const imgObj = state.images[state.activeIndex];
+            if (!imgObj) return;
+
+            if (mainCanvas.width !== imgObj.width || mainCanvas.height !== imgObj.height) {
+                mainCanvas.width = imgObj.width;
+                mainCanvas.height = imgObj.height;
+            }
+
+            if (state.isComparing) {
+                ctx.putImageData(imgObj.originalData, 0, 0);
+            } else {
+                ctx.putImageData(imgObj.processedData, 0, 0);
+            }
+        }
+
+        /**
+         * SİHİRLİ DEĞNEK ARACI (Kontür İçi veya Saç Arası Beyazları Seçip Silme)
+         * Saç & İnce Detay Koruma modu açıkken, tıklanan beyaz alanın içindeki veya kenarındaki
+         * saç tellerini koparmadan sadece beyaz arka plan katkısını (color unmixing ile) temizler.
+         */
+        function executeMagicWand(startX, startY) {
+            const imgObj = state.images[state.activeIndex];
+            if (!imgObj) return;
+
+            const w = imgObj.width;
+            const h = imgObj.height;
+            if (startX < 0 || startX >= w || startY < 0 || startY >= h) return;
+
+            const src = imgObj.originalData.data;
+            const startIdx = (startY * w + startX) * 4;
+            const targetR = src[startIdx];
+            const targetG = src[startIdx + 1];
+            const targetB = src[startIdx + 2];
+
+            const tol = state.wandTolerance * 1.45;
+            const softTransition = state.wandHairProtect ? Math.max(12, tol * 0.85) : Math.max(4, tol * 0.25);
+            const contiguous = state.wandContiguous;
+            const hairProtect = state.wandHairProtect;
+            const total = w * h;
+
+            // Pikselin tıklanan hedef renge olan mesafesini ve saç/renk doygunluğunu ölçer
+            const getPixelDiff = (idx4) => {
+                const r = src[idx4], g = src[idx4 + 1], b = src[idx4 + 2];
+                const dr = r - targetR;
+                const dg = g - targetG;
+                const db = b - targetB;
+                const dist = Math.sqrt(dr * dr + dg * dg + db * db);
+
+                if (!hairProtect) return dist;
+
+                // Saç koruma açıksa: Renk doygunluğu (chroma) veya koyuluk farkı varsa mesafeyi artır
+                // Böylece saç telleri silinmez, sadece aradaki beyaz/gri pikseller seçilir!
+                const targetChroma = Math.max(targetR, targetG, targetB) - Math.min(targetR, targetG, targetB);
+                const pixChroma = Math.max(r, g, b) - Math.min(r, g, b);
+                const chromaDiff = Math.max(0, pixChroma - targetChroma);
+
+                const targetLum = (targetR + targetG + targetB) / 3;
+                const pixLum = (r + g + b) / 3;
+                const darkPenalty = targetLum > 200 ? Math.max(0, (targetLum - pixLum) * 0.55) : 0;
+
+                return dist + chromaDiff * 1.1 + darkPenalty;
+            };
+
+            let removedCount = 0;
+
+            if (contiguous) {
+                // Sadece tıklanan kapalı kontürün veya saç arasının içini sil (Flood Fill)
+                const visited = new Uint8Array(total);
+                const queue = new Int32Array(total);
+                let head = 0, tail = 0;
+
+                const startPos = startY * w + startX;
+                visited[startPos] = 1;
+                queue[tail++] = startPos;
+
+                while (head < tail) {
+                    const curr = queue[head++];
+                    imgObj.userMask[curr] = 1; // Tam silindi
+                    removedCount++;
+
+                    const cx = curr % w;
+                    const cy = (curr / w) | 0;
+
+                    const neighbors = [];
+                    if (cx > 0) neighbors.push(curr - 1);
+                    if (cx < w - 1) neighbors.push(curr + 1);
+                    if (cy > 0) neighbors.push(curr - w);
+                    if (cy < h - 1) neighbors.push(curr + w);
+
+                    for (let n of neighbors) {
+                        if (visited[n]) continue;
+                        const d = getPixelDiff(n * 4);
+
+                        if (d <= tol) {
+                            visited[n] = 1;
+                            queue[tail++] = n;
+                        } else if (d <= tol + softTransition) {
+                            // Sınır/Saç kenarı pikseli: Tamamen silmek yerine orantılı yarı şeffaf yap
+                            // ve Decontamination motorunun beyazlığını almasını sağla!
+                            visited[n] = 1;
+                            const keepRatio = (d - tol) / softTransition; // 0.0 .. 1.0
+                            const code = 100 + Math.max(5, Math.min(95, Math.round(keepRatio * 100)));
+                            if (imgObj.userMask[n] === 0 || code < imgObj.userMask[n]) {
+                                imgObj.userMask[n] = code;
+                            }
+                        }
+                    }
+                }
+            } else {
+                // Resimdeki bu renge benzeyen tüm alanları saç korumalı olarak sil
+                for (let i = 0; i < total; i++) {
+                    const d = getPixelDiff(i * 4);
+                    if (d <= tol) {
+                        imgObj.userMask[i] = 1;
+                        removedCount++;
+                    } else if (d <= tol + softTransition) {
+                        const keepRatio = (d - tol) / softTransition;
+                        const code = 100 + Math.max(5, Math.min(95, Math.round(keepRatio * 100)));
+                        if (imgObj.userMask[i] === 0) imgObj.userMask[i] = code;
+                    }
+                }
+            }
+
+            saveHistory(imgObj);
+            processImagePipeline(imgObj);
+            renderImageList();
+            statusText.innerHTML = `<i class="fa-solid fa-wand-sparkles text-sky-400 mr-1"></i>Seçilen alandaki <b>${removedCount.toLocaleString('tr-TR')}</b> beyaz piksel (saç/kenar dokusu korunarak) temizlendi.`;
+        }
+
+        /**
+         * SİLGİ VE GERİ GETİRME FIRÇASI (Manuel Boyama)
+         */
+        function stampBrush(cx, cy, isRestore) {
+            const imgObj = state.images[state.activeIndex];
+            if (!imgObj) return;
+
+            const w = imgObj.width;
+            const h = imgObj.height;
+            const radius = state.brushSize / 2;
+            const rSq = radius * radius;
+            const softness = state.brushSoftness / 100.0;
+            const innerRadius = radius * (1 - softness);
+
+            const minX = Math.max(0, Math.floor(cx - radius));
+            const maxX = Math.min(w - 1, Math.ceil(cx + radius));
+            const minY = Math.max(0, Math.floor(cy - radius));
+            const maxY = Math.min(h - 1, Math.ceil(cy + radius));
+
+            const dst = imgObj.processedData.data;
+            const src = imgObj.originalData.data;
+
+            for (let y = minY; y <= maxY; y++) {
+                for (let x = minX; x <= maxX; x++) {
+                    const dx = x - cx;
+                    const dy = y - cy;
+                    const distSq = dx * dx + dy * dy;
+
+                    if (distSq <= rSq) {
+                        const i = y * w + x;
+                        const dist = Math.sqrt(distSq);
+
+                        if (isRestore) {
+                            // Geri Getir (Onar)
+                            imgObj.userMask[i] = 2;
+                            const idx4 = i * 4;
+                            dst[idx4] = src[idx4];
+                            dst[idx4 + 1] = src[idx4 + 1];
+                            dst[idx4 + 2] = src[idx4 + 2];
+                            dst[idx4 + 3] = src[idx4 + 3];
+                        } else {
+                            // Silgi Fırçası
+                            if (dist <= innerRadius) {
+                                imgObj.userMask[i] = 1;
+                                dst[i * 4 + 3] = 0;
+                            } else {
+                                // Yumuşak fırça kenarı
+                                const ratio = ( radius - dist ) / Math.max(0.1, radius - innerRadius);
+                                const currentAlpha = dst[i * 4 + 3];
+                                const newAlpha = Math.round(currentAlpha * (1 - ratio));
+                                dst[i * 4 + 3] = newAlpha;
+                                imgObj.userMask[i] = 100 + Math.round((newAlpha / 255) * 100);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        function applyBrushStroke(cx, cy, isRestore) {
+            const img = state.images[state.activeIndex];
+            if (!img) return;
+            const last = state.lastStroke;
+            if (last) {
+                const dx = cx - last.x, dy = cy - last.y;
+                const n = Math.floor(Math.hypot(dx, dy) / Math.max(1, state.brushSize * 0.2));
+                for (let k = 1; k <= n; k++) stampBrush(last.x + dx * k / n, last.y + dy * k / n, isRestore);
+            }
+            stampBrush(cx, cy, isRestore);
+            state.lastStroke = { x: cx, y: cy };
+            ctx.putImageData(img.processedData, 0, 0);
+        }
+
+        // Seçili Resmi Değiştir
+        function selectImage(index) {
+            if (index < 0 || index >= state.images.length) return;
+            state.activeIndex = index;
+            const imgObj = state.images[index];
+
+            // UI bilgilerini güncelle
+            document.getElementById('activeFileName').textContent = imgObj.name;
+            document.getElementById('activeFileRes').textContent = `${imgObj.width}x${imgObj.height}`;
+
+            // Sağ paneldeki kaydırıcıları bu resmin ayarlarına eşitle
+            paramTolerance.value = imgObj.params.tolerance;
+            document.getElementById('valTolerance').textContent = imgObj.params.tolerance;
+
+            paramRefinement.value = imgObj.params.refinement ?? 65;
+            document.getElementById('valRefinement').textContent = `${paramRefinement.value}%`;
+
+            paramDecontaminate.checked = imgObj.params.decontaminate !== false;
+            paramPreserveDetails.checked = imgObj.params.preserveDetails !== false;
+
+            paramChoke.value = imgObj.params.choke;
+            document.getElementById('valChoke').textContent = `${imgObj.params.choke} px`;
+
+            paramFeather.value = imgObj.params.feather;
+            document.getElementById('valFeather').textContent = `${imgObj.params.feather} px`;
+
+            paramSharpen.value = imgObj.params.sharpen;
+            document.getElementById('valSharpen').textContent = `${imgObj.params.sharpen}%`;
+
+            for (let radio of autoModeRadios) {
+                radio.checked = (radio.value === imgObj.params.mode);
+            }
+
+            updateUndoRedoButtons();
+            renderMainCanvas();
+            fitCanvasToViewport();
+            renderImageList();
+        }
+
+        // Sol Paneldeki Resim Listesini Çiz
+        function renderImageList() {
+            imageListEl.innerHTML = '';
+            const has = state.images.length > 0;
+            document.getElementById('emptyHint').classList.toggle('hidden', has);
+            transformContainer.classList.toggle('hidden', !has);
+            if (!has) {
+                document.getElementById('activeFileName').textContent = 'Resim yok';
+                document.getElementById('activeFileRes').textContent = '';
+            }
+            state.images.forEach((img, idx) => {
+                const isSelected = (idx === state.activeIndex);
+                const card = document.createElement('div');
+                card.className = `p-2 rounded-xl border transition cursor-pointer flex items-center gap-2.5 group ${
+                    isSelected 
+                    ? 'bg-sky-500/10 border-sky-500/60 shadow-md' 
+                    : 'bg-slate-800/40 border-slate-800 hover:bg-slate-800'
+                }`;
+
+                card.innerHTML = `
+                    <div class="w-12 h-12 rounded-lg checkerboard overflow-hidden shrink-0 border border-slate-700 flex items-center justify-center">
+                        <img src="${img.thumbnailUrl}" class="max-w-full max-h-full object-contain">
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-xs font-medium text-slate-200 truncate">${img.name}</p>
+                        <p class="text-[10px] text-slate-400 font-mono mt-0.5">${img.width}x${img.height} • ${
+                            img.params.mode === 'outer' ? 'Dış Silme' : img.params.mode === 'all' ? 'Tüm Beyaz' : 'Manuel'
+                        }</p>
+                    </div>
+                    <button class="btn-remove-img opacity-0 group-hover:opacity-100 p-1.5 text-slate-400 hover:text-rose-400 transition" title="Listeden Kaldır">
+                        <i class="fa-solid fa-trash-can text-xs"></i>
+                    </button>
+                `;
+
+                card.addEventListener('click', (e) => {
+                    if (e.target.closest('.btn-remove-img')) {
+                        e.stopPropagation();
+                        removeImage(idx);
+                        return;
+                    }
+                    selectImage(idx);
+                });
+
+                imageListEl.appendChild(card);
+            });
+        }
+
+        function removeImage(idx) {
+            if (state.images.length <= 1) {
+                state.images = [];
+                state.activeIndex = -1;
+                updateBatchCount();
+                renderImageList();
+                return;
+            }
+            state.images.splice(idx, 1);
+            if (state.activeIndex >= state.images.length) {
+                state.activeIndex = state.images.length - 1;
+            }
+            updateBatchCount();
+            selectImage(state.activeIndex);
+        }
+
+        function updateBatchCount() {
+            document.getElementById('batchCountBadge').textContent = state.images.length;
+        }
+
+        // Yakınlaştırma ve Ekrana Sığdırma
+        function fitCanvasToViewport() {
+            const imgObj = state.images[state.activeIndex];
+            if (!imgObj) return;
+
+            const vw = canvasViewport.clientWidth - 40;
+            const vh = canvasViewport.clientHeight - 70;
+            const scaleX = vw / imgObj.width;
+            const scaleY = vh / imgObj.height;
+            state.zoom = Math.max(0.1, Math.min(scaleX, scaleY, 1.2));
+            state.panX = 0;
+            state.panY = 0;
+            applyTransform();
+        }
+
+        function applyTransform() {
+            transformContainer.style.transform = `translate(${state.panX}px, ${state.panY}px) scale(${state.zoom})`;
+            
+            // Select kutusundaki değeri veya özel yüzdeyi güncelle
+            const pct = Math.round(state.zoom * 100);
+            let customOpt = zoomPresetSelect.querySelector('option[value="custom"]');
+            if (!customOpt) {
+                customOpt = document.createElement('option');
+                customOpt.value = 'custom';
+                zoomPresetSelect.prepend(customOpt);
+            }
+            customOpt.textContent = `${pct}%`;
+            zoomPresetSelect.value = 'custom';
+
+            updateBrushCursorSize();
+        }
+
+        function updateBrushCursorSize() {
+            const visualSize = state.brushSize * state.zoom;
+            brushCursor.style.width = `${visualSize}px`;
+            brushCursor.style.height = `${visualSize}px`;
+        }
+
+        // Fare / Dokunma Koordinatlarını Canvas Piksel Koordinatlarına Çevir
+        function getCanvasCoords(clientX, clientY) {
+            const rect = mainCanvas.getBoundingClientRect();
+            const x = Math.floor((clientX - rect.left) / state.zoom);
+            const y = Math.floor((clientY - rect.top) / state.zoom);
+            return { x, y };
+        }
+
+        /**
+         * HASSAS CANLI MERCEK (LOUPE / BÜYÜTEÇ) SİSTEMİ
+         * Kullanıcının dokunduğu veya fareyi gezdirdiği noktayı 2x, 4x veya 8x büyüterek
+         * parmağın altını kapatmayacak şekilde üst kısımda piksel ızgarasıyla birlikte gösterir.
+         */
+        function updateLoupe(clientX, clientY) {
+            if (!state.loupeEnabled || state.currentTool === 'pan' || state.isSpacePressed || state.midPan) {
+                loupeWidget.classList.add('hidden');
+                return;
+            }
+            const imgObj = state.images[state.activeIndex];
+            if (!imgObj) return;
+
+            const coords = getCanvasCoords(clientX, clientY);
+            if (coords.x < 0 || coords.x >= imgObj.width || coords.y < 0 || coords.y >= imgObj.height) {
+                loupeWidget.classList.add('hidden');
+                return;
+            }
+
+            loupeWidget.classList.remove('hidden');
+            loupeWidget.classList.add('flex');
+
+            // Merceği parmağın veya imlecin üstüne konumlandır (Ekran dışına taşarsa altına veya yanına kaydır)
+            const loupeW = loupeWidget.offsetWidth || 160;
+            const loupeH = loupeWidget.offsetHeight || 190;
+            let lx = clientX - loupeW / 2;
+            let ly = clientY - loupeH - 45; // Parmağın üstünde dursun
+
+            if (ly < 60) {
+                ly = clientY + 55; // Üst kenara çok yakınsa parmağın altına al
+            }
+            lx = Math.max(10, Math.min(window.innerWidth - loupeW - 10, lx));
+
+            loupeWidget.style.left = `${lx}px`;
+            loupeWidget.style.top = `${ly}px`;
+
+            // Mercek İçeriğini Çiz
+            const cw = loupeCanvas.width;
+            const ch = loupeCanvas.height;
+            loupeCtx.clearRect(0, 0, cw, ch);
+            loupeCtx.imageSmoothingEnabled = false;
+
+            // Kaç piksellik bir alan mercekte gösterilecek?
+            const srcRadius = Math.max(4, Math.round(24 / (state.loupeZoom / 2)));
+            const srcSize = srcRadius * 2 + 1;
+            const sx = coords.x - srcRadius;
+            const sy = coords.y - srcRadius;
+
+            // Ana canvasın güncel görüntüsünü merceğe büyütülmüş olarak aktar
+            loupeCtx.drawImage(
+                mainCanvas,
+                sx, sy, srcSize, srcSize,
+                0, 0, cw, ch
+            );
+
+            // Yüksek büyütmede ince piksel ızgarası (Grid) çiz
+            if (state.loupeZoom >= 4) {
+                const cellSize = cw / srcSize;
+                loupeCtx.strokeStyle = 'rgba(148, 163, 184, 0.22)';
+                loupeCtx.lineWidth = 1;
+                loupeCtx.beginPath();
+                for (let i = 0; i <= srcSize; i++) {
+                    const pos = i * cellSize;
+                    loupeCtx.moveTo(pos, 0);
+                    loupeCtx.lineTo(pos, ch);
+                    loupeCtx.moveTo(0, pos);
+                    loupeCtx.lineTo(cw, pos);
+                }
+                loupeCtx.stroke();
+            }
+
+            // Seçili Fırça Boyutunu Mercek İçinde Göster
+            if (state.currentTool === 'eraser' || state.currentTool === 'restore') {
+                const cellSize = cw / srcSize;
+                const brushRadiusInLoupe = (state.brushSize / 2) * cellSize;
+                loupeCtx.strokeStyle = state.currentTool === 'restore' ? '#34d399' : '#f43f5e';
+                loupeCtx.lineWidth = 1.5;
+                loupeCtx.beginPath();
+                loupeCtx.arc(cw / 2, ch / 2, brushRadiusInLoupe, 0, Math.PI * 2);
+                loupeCtx.stroke();
+            }
+
+            // Mercek Altındaki Pikselin Rengini ve Koordinatını Göster
+            const pIdx = (coords.y * imgObj.width + coords.x) * 4;
+            const r = imgObj.originalData.data[pIdx];
+            const g = imgObj.originalData.data[pIdx + 1];
+            const b = imgObj.originalData.data[pIdx + 2];
+            loupeColorDot.style.backgroundColor = `rgb(${r},${g},${b})`;
+            loupeCoordText.textContent = `${coords.x}, ${coords.y}`;
+            loupeZoomBadge.textContent = `${state.loupeZoom}x`;
+        }
+
+        // Mercek Buton ve Kontrolleri
+        const btnToggleLoupe = document.getElementById('btnToggleLoupe');
+        const chkEnableLoupe = document.getElementById('chkEnableLoupe');
+
+        function setLoupeActive(val) {
+            state.loupeEnabled = val;
+            chkEnableLoupe.checked = val;
+            if (val) {
+                btnToggleLoupe.className = "px-2.5 py-1.5 rounded-lg bg-sky-500/20 text-sky-300 border border-sky-500/40 hover:bg-sky-500/30 transition text-xs flex items-center gap-1 font-medium";
+            } else {
+                btnToggleLoupe.className = "px-2.5 py-1.5 rounded-lg bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-700 transition text-xs flex items-center gap-1 font-medium";
+                loupeWidget.classList.add('hidden');
+            }
+        }
+
+        btnToggleLoupe.addEventListener('click', () => setLoupeActive(!state.loupeEnabled));
+        chkEnableLoupe.addEventListener('change', (e) => setLoupeActive(e.target.checked));
+
+        document.querySelectorAll('.loupe-zoom-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.loupe-zoom-btn').forEach(b => {
+                    b.className = "loupe-zoom-btn px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300";
+                });
+                btn.className = "loupe-zoom-btn px-2 py-0.5 rounded bg-sky-600 text-white font-semibold";
+                state.loupeZoom = Number(btn.dataset.lzoom);
+            });
+        });
+
+        // Mobil / Tablet Yan Panel Açma-Kapatma Kontrolü
+        const leftSidebar = document.getElementById('leftSidebar');
+        const rightSidebar = document.getElementById('rightSidebar');
+        const mobileBackdrop = document.getElementById('mobileBackdrop');
+
+        function closeMobileDrawers() {
+            leftSidebar.classList.add('-translate-x-full');
+            rightSidebar.classList.add('translate-x-full');
+            mobileBackdrop.classList.add('hidden');
+        }
+
+        document.getElementById('btnToggleLeft').addEventListener('click', () => {
+            const isOpen = !leftSidebar.classList.contains('-translate-x-full');
+            closeMobileDrawers();
+            if (!isOpen) {
+                leftSidebar.classList.remove('-translate-x-full');
+                mobileBackdrop.classList.remove('hidden');
+            }
+        });
+
+        document.getElementById('btnToggleRight').addEventListener('click', () => {
+            const isOpen = !rightSidebar.classList.contains('translate-x-full');
+            closeMobileDrawers();
+            if (!isOpen) {
+                rightSidebar.classList.remove('translate-x-full');
+                mobileBackdrop.classList.remove('hidden');
+            }
+        });
+
+        mobileBackdrop.addEventListener('click', closeMobileDrawers);
+
+        // Fare Etkileşim Olayları (Masaüstü)
+        canvasViewport.addEventListener('auxclick', e => e.preventDefault());
+        canvasViewport.addEventListener('mousedown', (e) => {
+            if (e.button === 1) {
+                e.preventDefault();
+                state.midPan = true; state.isDragging = true;
+                state.lastMouseX = e.clientX; state.lastMouseY = e.clientY;
+                canvasViewport.style.cursor = 'grabbing';
+                loupeWidget.classList.add('hidden');
+                brushCursor.classList.add('hidden');
+                return;
+            }
+            if (e.button !== 0) return;
+            state.lastStroke = null;
+            state.isDragging = true;
+            state.lastMouseX = e.clientX;
+            state.lastMouseY = e.clientY;
+
+            if (state.isSpacePressed || state.currentTool === 'pan') {
+                canvasViewport.style.cursor = 'grabbing';
+                loupeWidget.classList.add('hidden');
+                return;
+            }
+
+            const coords = getCanvasCoords(e.clientX, e.clientY);
+
+            if (state.currentTool === 'wand') {
+                executeMagicWand(coords.x, coords.y);
+                updateLoupe(e.clientX, e.clientY);
+                state.isDragging = false;
+            } else if (state.currentTool === 'eraser') {
+                applyBrushStroke(coords.x, coords.y, false);
+                updateLoupe(e.clientX, e.clientY);
+            } else if (state.currentTool === 'restore') {
+                applyBrushStroke(coords.x, coords.y, true);
+                updateLoupe(e.clientX, e.clientY);
+            }
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            // Fırça İmleci ve Mercek Takibi
+            if (state.currentTool === 'eraser' || state.currentTool === 'restore') {
+                brushCursor.style.left = `${e.clientX}px`;
+                brushCursor.style.top = `${e.clientY}px`;
+            }
+
+            if (e.target.closest('#canvasViewport')) {
+                updateLoupe(e.clientX, e.clientY);
+            } else {
+                loupeWidget.classList.add('hidden');
+            }
+
+            if (!state.isDragging) return;
+
+            if (state.midPan || state.isSpacePressed || state.currentTool === 'pan') {
+                const dx = e.clientX - state.lastMouseX;
+                const dy = e.clientY - state.lastMouseY;
+                state.panX += dx;
+                state.panY += dy;
+                state.lastMouseX = e.clientX;
+                state.lastMouseY = e.clientY;
+                applyTransform();
+                return;
+            }
+
+            const coords = getCanvasCoords(e.clientX, e.clientY);
+            if (state.currentTool === 'eraser') {
+                applyBrushStroke(coords.x, coords.y, false);
+                updateLoupe(e.clientX, e.clientY);
+            } else if (state.currentTool === 'restore') {
+                applyBrushStroke(coords.x, coords.y, true);
+                updateLoupe(e.clientX, e.clientY);
+            }
+        });
+
+        window.addEventListener('mouseup', () => {
+            if (!state.isDragging) return;
+            state.isDragging = false;
+            if (state.midPan) {
+                state.midPan = false;
+                const t = state.currentTool;
+                canvasViewport.style.cursor = t === 'pan' ? 'grab' : (t === 'wand' ? 'crosshair' : 'none');
+                if (t === 'eraser' || t === 'restore') brushCursor.classList.remove('hidden');
+                return;
+            }
+
+            if (state.isSpacePressed || state.currentTool === 'pan') {
+                canvasViewport.style.cursor = 'grab';
+                return;
+            }
+
+            // Fırça işlemi bittiğinde kenar yumuşatmayı ve geçmişi güncelle
+            if (state.currentTool === 'eraser' || state.currentTool === 'restore') {
+                const imgObj = state.images[state.activeIndex];
+                if (imgObj) {
+                    saveHistory(imgObj);
+                    processImagePipeline(imgObj);
+                    renderImageList();
+                }
+            }
+        });
+
+        /**
+         * ANDROID TABLET VE TELEFON DOKUNMATİK (TOUCH) OLAYLARI
+         * - 2 Parmakla Kıstırarak Yakınlaştırma (Pinch-to-Zoom %3200'e kadar) ve Kaydırma
+         * - 1 Parmakla Mercek Eşliğinde Hassas Sihirli Değnek (Parmağı gezdirip nişan al, bırakınca sil!)
+         * - 1 Parmakla Fırça / Silgi Boyama
+         */
+        canvasViewport.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            state.lastStroke = null;
+
+            if (e.touches.length === 2) {
+                // İki Parmak: Pinch Zoom & Pan Başlangıcı
+                state.isDragging = false;
+                state.wandTouchPending = false;
+                loupeWidget.classList.add('hidden');
+
+                const t1 = e.touches[0];
+                const t2 = e.touches[1];
+                state.touchStartDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+                state.touchStartZoom = state.zoom;
+                state.touchStartMidX = (t1.clientX + t2.clientX) / 2;
+                state.touchStartMidY = (t1.clientY + t2.clientY) / 2;
+                state.touchStartPanX = state.panX;
+                state.touchStartPanY = state.panY;
+                return;
+            }
+
+            if (e.touches.length === 1) {
+                const t = e.touches[0];
+                state.isDragging = true;
+                state.lastMouseX = t.clientX;
+                state.lastMouseY = t.clientY;
+
+                if (state.currentTool === 'pan') {
+                    loupeWidget.classList.add('hidden');
+                    return;
+                }
+
+                const coords = getCanvasCoords(t.clientX, t.clientY);
+                updateLoupe(t.clientX, t.clientY);
+
+                if (state.currentTool === 'wand') {
+                    // Tablette/Telefonda parmağı basıp mercekle nişan alabilmesi için bırakınca (touchend) siler!
+                    state.wandTouchPending = true;
+                    state.wandTouchCoords = coords;
+                    statusText.innerHTML = `<i class="fa-solid fa-crosshairs text-sky-400 mr-1"></i>Mercek ile hedefi ortalayın ve silmek için parmağınızı kaldırın.`;
+                } else if (state.currentTool === 'eraser') {
+                    applyBrushStroke(coords.x, coords.y, false);
+                    updateLoupe(t.clientX, t.clientY);
+                } else if (state.currentTool === 'restore') {
+                    applyBrushStroke(coords.x, coords.y, true);
+                    updateLoupe(t.clientX, t.clientY);
+                }
+            }
+        }, { passive: false });
+
+        canvasViewport.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+
+            if (e.touches.length === 2) {
+                // İki Parmakla Yakınlaştırma & Kaydırma
+                const t1 = e.touches[0];
+                const t2 = e.touches[1];
+                const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+                const midX = (t1.clientX + t2.clientX) / 2;
+                const midY = (t1.clientY + t2.clientY) / 2;
+
+                if (state.touchStartDist > 10) {
+                    const scaleFactor = dist / state.touchStartDist;
+                    state.zoom = Math.max(0.15, Math.min(32, state.touchStartZoom * scaleFactor));
+                }
+
+                state.panX = state.touchStartPanX + (midX - state.touchStartMidX);
+                state.panY = state.touchStartPanY + (midY - state.touchStartMidY);
+                applyTransform();
+                return;
+            }
+
+            if (e.touches.length === 1 && state.isDragging) {
+                const t = e.touches[0];
+
+                if (state.currentTool === 'pan') {
+                    const dx = t.clientX - state.lastMouseX;
+                    const dy = t.clientY - state.lastMouseY;
+                    state.panX += dx;
+                    state.panY += dy;
+                    state.lastMouseX = t.clientX;
+                    state.lastMouseY = t.clientY;
+                    applyTransform();
+                    return;
+                }
+
+                const coords = getCanvasCoords(t.clientX, t.clientY);
+                updateLoupe(t.clientX, t.clientY);
+
+                if (state.currentTool === 'wand') {
+                    state.wandTouchCoords = coords;
+                } else if (state.currentTool === 'eraser') {
+                    applyBrushStroke(coords.x, coords.y, false);
+                    updateLoupe(t.clientX, t.clientY);
+                } else if (state.currentTool === 'restore') {
+                    applyBrushStroke(coords.x, coords.y, true);
+                    updateLoupe(t.clientX, t.clientY);
+                }
+            }
+        }, { passive: false });
+
+        canvasViewport.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            loupeWidget.classList.add('hidden');
+
+            if (state.wandTouchPending) {
+                state.wandTouchPending = false;
+                executeMagicWand(state.wandTouchCoords.x, state.wandTouchCoords.y);
+            } else if (state.isDragging && (state.currentTool === 'eraser' || state.currentTool === 'restore')) {
+                const imgObj = state.images[state.activeIndex];
+                if (imgObj) {
+                    saveHistory(imgObj);
+                    processImagePipeline(imgObj);
+                    renderImageList();
+                }
+            }
+
+            if (e.touches.length === 0) {
+                state.isDragging = false;
+            }
+        }, { passive: false });
+
+        // Fare Tekerleği ile Ultra Yakınlaştırma (%3200'e kadar)
+        canvasViewport.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const factor = e.deltaY < 0 ? 1.18 : 1 / 1.18;
+            const nz = Math.max(0.05, Math.min(32, state.zoom * factor));
+            const f = nz / state.zoom;
+            const r = canvasViewport.getBoundingClientRect();
+            const mx = e.clientX - (r.left + r.width / 2), my = e.clientY - (r.top + r.height / 2);
+            state.panX = mx - (mx - state.panX) * f;
+            state.panY = my - (my - state.panY) * f;
+            state.zoom = nz;
+            applyTransform();
+            updateLoupe(e.clientX, e.clientY);
+        }, { passive: false });
+
+        canvasViewport.addEventListener('mouseenter', () => {
+            if (state.currentTool === 'eraser' || state.currentTool === 'restore') {
+                brushCursor.classList.remove('hidden');
+            }
+        });
+        canvasViewport.addEventListener('mouseleave', () => {
+            brushCursor.classList.add('hidden');
+            loupeWidget.classList.add('hidden');
+        });
+
+        // Araç Seçim Fonksiyonu (Hem Sol Menü hem Mobil Yüzen Bar için ortak)
+        function setActiveTool(toolName) {
+            state.currentTool = toolName;
+
+            document.querySelectorAll('.tool-btn').forEach(b => {
+                b.classList.toggle('tool-active', b.dataset.tool === toolName);
+            });
+            document.querySelectorAll('.mobile-tool-btn').forEach(b => {
+                if (b.dataset.tool === toolName) {
+                    b.classList.add('tool-active');
+                    b.classList.remove('text-slate-300');
+                } else {
+                    b.classList.remove('tool-active');
+                    b.classList.add('text-slate-300');
+                }
+            });
+
+            const wandOpts = document.getElementById('wandOptions');
+            const brushOpts = document.getElementById('brushOptions');
+
+            if (toolName === 'wand') {
+                wandOpts.classList.remove('hidden');
+                brushOpts.classList.add('hidden');
+                canvasViewport.style.cursor = 'crosshair';
+                brushCursor.classList.add('hidden');
+            } else if (toolName === 'eraser' || toolName === 'restore') {
+                wandOpts.classList.add('hidden');
+                brushOpts.classList.remove('hidden');
+                canvasViewport.style.cursor = 'none';
+                updateBrushCursorSize();
+            } else if (toolName === 'pan') {
+                wandOpts.classList.add('hidden');
+                brushOpts.classList.add('hidden');
+                canvasViewport.style.cursor = 'grab';
+                brushCursor.classList.add('hidden');
+                loupeWidget.classList.add('hidden');
+            }
+        }
+
+        document.querySelectorAll('.tool-btn, .mobile-tool-btn').forEach(btn => {
+            btn.addEventListener('click', () => setActiveTool(btn.dataset.tool));
+        });
+
+        // Değnek ve Fırça Alt Ayar Dinleyicileri
+        document.getElementById('wandTolerance').addEventListener('input', (e) => {
+            state.wandTolerance = Number(e.target.value);
+            document.getElementById('wandTolVal').textContent = state.wandTolerance;
+        });
+        document.getElementById('wandContiguous').addEventListener('change', (e) => {
+            state.wandContiguous = e.target.checked;
+        });
+        document.getElementById('wandHairProtect').addEventListener('change', (e) => {
+            state.wandHairProtect = e.target.checked;
+        });
+        document.getElementById('brushSize').addEventListener('input', (e) => {
+            state.brushSize = Number(e.target.value);
+            document.getElementById('brushSizeVal').textContent = `${state.brushSize}px`;
+            updateBrushCursorSize();
+        });
+        document.getElementById('brushSoftness').addEventListener('input', (e) => {
+            state.brushSoftness = Number(e.target.value);
+            document.getElementById('brushSoftVal').textContent = `${state.brushSoftness}%`;
+        });
+
+        // Sağ Panel Kenar ve Tolerans Kaydırıcıları
+        function bindRightPanelParameters() {
+            const updateActiveParams = () => {
+                const imgObj = state.images[state.activeIndex];
+                if (!imgObj) return;
+
+                imgObj.params.tolerance = Number(paramTolerance.value);
+                imgObj.params.refinement = Number(paramRefinement.value);
+                imgObj.params.decontaminate = paramDecontaminate.checked;
+                imgObj.params.preserveDetails = paramPreserveDetails.checked;
+                imgObj.params.choke = Number(paramChoke.value);
+                imgObj.params.feather = Number(paramFeather.value);
+                imgObj.params.sharpen = Number(paramSharpen.value);
+
+                for (let r of autoModeRadios) {
+                    if (r.checked) imgObj.params.mode = r.value;
+                }
+
+                document.getElementById('valTolerance').textContent = imgObj.params.tolerance;
+                document.getElementById('valRefinement').textContent = `${imgObj.params.refinement}%`;
+                document.getElementById('valChoke').textContent = `${imgObj.params.choke} px`;
+                document.getElementById('valFeather').textContent = `${imgObj.params.feather} px`;
+                document.getElementById('valSharpen').textContent = `${imgObj.params.sharpen}%`;
+
+                schedulePipelineUpdate(imgObj);
+            };
+
+            [paramTolerance, paramRefinement, paramChoke, paramFeather, paramSharpen].forEach(el => {
+                el.addEventListener('input', updateActiveParams);
+            });
+            [paramDecontaminate, paramPreserveDetails].forEach(el => {
+                el.addEventListener('change', updateActiveParams);
+            });
+            autoModeRadios.forEach(r => r.addEventListener('change', updateActiveParams));
+        }
+        bindRightPanelParameters();
+
+        // Tüm Resimlere Aynı Ayarları Uygula (Toplu İşlem)
+        document.getElementById('btnApplyToAll').addEventListener('click', () => {
+            const activeImg = state.images[state.activeIndex];
+            if (!activeImg) return;
+
+            state.images.forEach(img => {
+                img.params = { ...activeImg.params };
+                processImagePipeline(img);
+            });
+
+            renderImageList();
+            showToast('Toplu Uygulandı', `Mevcut kenar ve tolerans ayarları listedeki ${state.images.length} resmin tamamına uygulandı.`);
+        });
+
+        // Resmi Sıfırla
+        document.getElementById('btnResetCurrent').addEventListener('click', () => {
+            const imgObj = state.images[state.activeIndex];
+            if (!imgObj) return;
+
+            imgObj.userMask.fill(0);
+            imgObj.params = {
+                mode: 'outer',
+                tolerance: 35,
+                refinement: 65,
+                decontaminate: true,
+                preserveDetails: true,
+                choke: 0,
+                feather: 0.5,
+                sharpen: 15
+            };
+            saveHistory(imgObj);
+            selectImage(state.activeIndex);
+            processImagePipeline(imgObj);
+            showToast('Sıfırlandı', 'Resim varsayılan temizleme ayarlarına döndürüldü.');
+        });
+
+        // Geri Al / İleri Al (Undo / Redo)
+        function undo() {
+            const img = state.images[state.activeIndex];
+            if (!img || img.historyIndex <= 0) return;
+            img.historyIndex--;
+            img.userMask = new Uint8Array(img.history[img.historyIndex]);
+            updateUndoRedoButtons();
+            processImagePipeline(img);
+            renderImageList();
+        }
+
+        function redo() {
+            const img = state.images[state.activeIndex];
+            if (!img || img.historyIndex >= img.history.length - 1) return;
+            img.historyIndex++;
+            img.userMask = new Uint8Array(img.history[img.historyIndex]);
+            updateUndoRedoButtons();
+            processImagePipeline(img);
+            renderImageList();
+        }
+
+        document.getElementById('btnUndo').addEventListener('click', undo);
+        document.getElementById('btnRedo').addEventListener('click', redo);
+
+        // Klavye Kısayolları
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' && !state.isSpacePressed) {
+                state.isSpacePressed = true;
+                canvasViewport.style.cursor = 'grab';
+            }
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+                e.preventDefault();
+                undo();
+            }
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+                e.preventDefault();
+                redo();
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (e.code === 'Space') {
+                state.isSpacePressed = false;
+                canvasViewport.style.cursor = state.currentTool === 'pan' ? 'grab' : 'crosshair';
+            }
+        });
+
+        // Yakınlaştırma ve Kıyaslama Butonları
+        document.getElementById('btnZoomIn').addEventListener('click', () => {
+            state.zoom = Math.min(32, state.zoom * 1.4);
+            applyTransform();
+        });
+        document.getElementById('btnZoomOut').addEventListener('click', () => {
+            state.zoom = Math.max(0.15, state.zoom * 0.75);
+            applyTransform();
+        });
+
+        zoomPresetSelect.addEventListener('change', (e) => {
+            if (e.target.value === 'fit') {
+                fitCanvasToViewport();
+            } else if (e.target.value !== 'custom') {
+                state.zoom = parseFloat(e.target.value);
+                applyTransform();
+            }
+        });
+
+        const btnCompare = document.getElementById('btnCompare');
+        btnCompare.addEventListener('mousedown', () => { state.isComparing = true; renderMainCanvas(); });
+        window.addEventListener('mouseup', () => { if (state.isComparing) { state.isComparing = false; renderMainCanvas(); } });
+        btnCompare.addEventListener('touchstart', (e) => { e.preventDefault(); state.isComparing = true; renderMainCanvas(); });
+        btnCompare.addEventListener('touchend', () => { state.isComparing = false; renderMainCanvas(); });
+
+        // Zemin Önizleme Değiştirici
+        document.querySelectorAll('.bg-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.bg-btn').forEach(b => b.classList.replace('border-sky-500', 'border-slate-700'));
+                btn.classList.replace('border-slate-700', 'border-sky-500');
+
+                canvasViewport.classList.remove('checkerboard', 'bg-dark-preview', 'bg-gray-preview', 'bg-white-preview', 'bg-green-preview');
+                if (btn.dataset.bg === 'checkerboard') canvasViewport.classList.add('checkerboard');
+                if (btn.dataset.bg === 'dark') canvasViewport.classList.add('bg-dark-preview');
+                if (btn.dataset.bg === 'gray') canvasViewport.classList.add('bg-gray-preview');
+                if (btn.dataset.bg === 'white') canvasViewport.classList.add('bg-white-preview');
+                if (btn.dataset.bg === 'green') canvasViewport.classList.add('bg-green-preview');
+            });
+        });
+
+        // Dosya Yükleme İşlemleri (Çoklu Yükleme & Sürükle Bırak)
+        function handleFiles(files) {
+            if (!files || files.length === 0) return;
+            let loaded = 0;
+            dropSamples();
+            const startIdx = state.images.length;
+
+            Array.from(files).forEach(file => {
+                if (!file.type.startsWith('image/')) return;
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const c = document.createElement('canvas');
+                        c.width = img.width;
+                        c.height = img.height;
+                        const x = c.getContext('2d');
+                        x.drawImage(img, 0, 0);
+                        const imgData = x.getImageData(0, 0, img.width, img.height);
+
+                        addImageToState(file.name, img.width, img.height, imgData);
+                        loaded++;
+                        if (loaded === 1) {
+                            selectImage(startIdx);
+                        }
+                        if (loaded === files.length) {
+                            showToast('Resimler Eklendi', `${loaded} adet resim başarıyla stüdyoya aktarıldı.`);
+                        }
+                    };
+                    img.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        document.getElementById('fileInput').addEventListener('change', (e) => {
+            handleFiles(e.target.files);
+            e.target.value = '';
+        });
+
+        // Sürükle ve Bırak Desteği
+        const dropOverlay = document.getElementById('dropZoneOverlay');
+        window.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropOverlay.classList.remove('hidden');
+        });
+        dropOverlay.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            dropOverlay.classList.add('hidden');
+        });
+        window.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropOverlay.classList.add('hidden');
+            handleFiles(e.dataTransfer.files);
+        });
+
+        
+        // Tekli PNG İndirme
+        document.getElementById('btnDownloadCurrent').addEventListener('click', () => {
+            const imgObj = state.images[state.activeIndex];
+            if (!imgObj) return;
+
+            const exportCanvas = getExportCanvas(imgObj);
+
+            const cleanName = imgObj.name.replace(/\.[^/.]+$/, "") + "_seffaf.png";
+            const link = document.createElement('a');
+            link.download = cleanName;
+            link.href = exportCanvas.toDataURL('image/png');
+            link.click();
+
+            showToast('İndirildi', `${cleanName} şeffaf PNG olarak kaydedildi.`);
+        });
+
+        // Toplu ZIP İndirme (Batch Export)
+        document.getElementById('btnDownloadAll').addEventListener('click', async () => {
+            if (state.images.length === 0) return;
+
+            showToast('ZIP Hazırlanıyor...', 'Tüm resimler şeffaf PNG olarak paketleniyor.', 'fa-spinner fa-spin text-sky-400');
+
+            const zip = new JSZip();
+            const folder = zip.folder("Seffaf_Arkaplanli_Resimler");
+
+            for (let i = 0; i < state.images.length; i++) {
+                const imgObj = state.images[i];
+                const exportCanvas = getExportCanvas(imgObj);
+
+                const dataUrl = exportCanvas.toDataURL('image/png');
+                const base64Data = dataUrl.replace(/^data:image\/png;base64,/, "");
+                const cleanName = `${i + 1}_${imgObj.name.replace(/\.[^/.]+$/, "")}_temiz.png`;
+                folder.file(cleanName, base64Data, { base64: true });
+            }
+
+            const content = await zip.generateAsync({ type: "blob" });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(content);
+            link.download = `ProCut_Toplu_Cikti_${state.images.length}_Resim.zip`;
+            link.click();
+
+            showToast('Toplu İndirme Tamamlandı', `${state.images.length} adet resim ZIP paketi olarak indirildi.`);
+        });
+
+        // ---- Dışa aktarma: otomatik kırpma + panoya kopyalama ----
+        const exportOpts = { crop: true, pad: 0 };
+        function getExportCanvas(img) {
+            const c = document.createElement('canvas');
+            c.width = img.width; c.height = img.height;
+            c.getContext('2d').putImageData(img.processedData, 0, 0);
+            if (!exportOpts.crop) return c;
+            const d = img.processedData.data, w = img.width, h = img.height;
+            let x0 = w, y0 = h, x1 = -1, y1 = -1;
+            for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+                if (d[(y * w + x) * 4 + 3] > 8) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+            }
+            if (x1 < 0) return c;
+            const p = exportOpts.pad, bw = x1 - x0 + 1, bh = y1 - y0 + 1;
+            const o = document.createElement('canvas');
+            o.width = bw + p * 2; o.height = bh + p * 2;
+            o.getContext('2d').drawImage(c, x0, y0, bw, bh, p, p, bw, bh);
+            return o;
+        }
+        document.getElementById('chkCrop').addEventListener('change', e => { exportOpts.crop = e.target.checked; });
+        document.getElementById('paramPad').addEventListener('input', e => {
+            exportOpts.pad = Number(e.target.value);
+            document.getElementById('valPad').textContent = exportOpts.pad + ' px';
+        });
+        document.getElementById('btnCopy').addEventListener('click', async () => {
+            const img = state.images[state.activeIndex];
+            if (!img) return;
+            try {
+                const blob = await new Promise(r => getExportCanvas(img).toBlob(r, 'image/png'));
+                await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+                showToast('Kopyalandı', 'Şeffaf PNG panoda. Hedef uygulamada Ctrl+V yapın.');
+            } catch (err) {
+                showToast('Kopyalanamadı', 'Tarayıcı izin vermedi; PNG indirmeyi kullanın.', 'fa-triangle-exclamation text-amber-400');
+            }
+        });
+
+        // Ctrl+V ile resim yapıştır
+        window.addEventListener('paste', e => {
+            const files = Array.from(e.clipboardData?.files || []).filter(f => f.type.startsWith('image/'));
+            if (files.length) { e.preventDefault(); handleFiles(files); }
+        });
+
+        // Araç kısayolları: W değnek, E silgi, R geri getir, H el, [ ] fırça boyutu, 0 sığdır
+        window.addEventListener('keydown', e => {
+            if (e.ctrlKey || e.metaKey || e.altKey || /INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) return;
+            const k = e.key.toLowerCase();
+            const map = { w: 'wand', e: 'eraser', r: 'restore', h: 'pan' };
+            if (map[k]) setActiveTool(map[k]);
+            else if (k === '[' || k === ']') {
+                const sl = document.getElementById('brushSize');
+                sl.value = Math.max(2, Math.min(150, Number(sl.value) + (k === ']' ? 5 : -5)));
+                sl.dispatchEvent(new Event('input'));
+            } else if (k === '0') fitCanvasToViewport();
+        });
+        window.addEventListener('keydown', e => {
+            if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'z') { e.preventDefault(); redo(); }
+        });
+
+        // Başlangıçta örnek görselleri hazırla
+        window.onload = () => {
+            renderImageList();
+            window.addEventListener('resize', fitCanvasToViewport);
+        };
+    </script>
+</body>
+</html>
